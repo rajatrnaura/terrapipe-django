@@ -1,0 +1,29 @@
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>TerraPipe - {% block title %}{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+<body>
+    <nav>
+        <a href="{% url 'dashboard:home' %}">Home</a>
+        {% if user.is_authenticated %}
+            <a href="{% url 'dashboard:profile' %}">Profile</a>
+            <a href="{% url 'dashboard:logout' %}">Logout</a>
+        {% else %}
+            <a href="{% url 'dashboard:login' %}">Login</a>
+            <a href="{% url 'dashboard:signup' %}">Signup</a>
+        {% endif %}
+    </nav>
+    <main>
+        {% if messages %}
+            {% for message in messages %}
+                <p class="{{ message.tags }}">{{ message }}</p>
+            {% endfor %}
+        {% endif %}
+        {% block content %}
+        {% endblock %}
+    </main>
+</body>
+</html>
