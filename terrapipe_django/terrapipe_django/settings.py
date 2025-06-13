@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'dashboard'
 ]
 
 MIDDLEWARE = [
@@ -67,19 +68,33 @@ TEMPLATES = [
     },
 ]
 
+
+JWT_SECRET_KEY = 'tFV0kGlq0r48ZS-0IUFxIh1VHvh62qsSP6ZsgahTBPk'
 WSGI_APPLICATION = 'terrapipe_django.wsgi.application'
 
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
+#     }
+# }
+
+
+# settings.py
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'terrapipe_be',           # Database name
+        'USER': 'terrapipe',              # Database user
+        'PASSWORD': 'pass1234!',          # Database password
+        'HOST': '66.220.3.87',          # Remote server IP or hostname
+        'PORT': '5432',                   # PostgreSQL port
     }
 }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
