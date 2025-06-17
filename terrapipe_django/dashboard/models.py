@@ -99,24 +99,25 @@ User = get_user_model()
 
 class Application(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    type = ArrayField(models.CharField(max_length=50))  # character varying(50)[]
-    description = models.TextField()
-    authors = ArrayField(models.CharField(max_length=100))  # character varying(100)[]
-    company = models.CharField(max_length=100, null=True, blank=True)
-    create_date = models.DateTimeField(null=True, blank=True)
-    picture = models.TextField(null=True, blank=True)
-    dev_stage = models.CharField(max_length=50)
-    price_scope_month = models.FloatField(null=True, blank=True)
-    root = models.CharField(max_length=255, unique=True)
-    meta_data = ArrayField(JSONField(), null=True, blank=True)  # json[]
 
-    class Meta:
-        db_table = 'applications'
-        verbose_name = 'Application'
-        verbose_name_plural = 'Applications'
+    # Fields you're keeping or modifying:
+    root = models.CharField(max_length=255, unique=True)
+    description = models.TextField(null=True, blank=True)
+    picture = models.TextField(null=True, blank=True)
+    dev_stage = models.CharField(max_length=100, null=True, blank=True)
+    company = models.CharField(max_length=255, null=True, blank=True)
+    create_date = models.DateTimeField(auto_now_add=True)
+    price_scope_month = models.FloatField(null=True, blank=True)
+
+    type = ArrayField(models.CharField(max_length=50), null=True, blank=True)
+    authors = ArrayField(models.CharField(max_length=100), null=True, blank=True)
+    meta_data = JSONField(null=True, blank=True)
 
     def __str__(self):
         return self.root
+
+    class Meta:
+        db_table = "applications"
 
 
 class UserApplicationAssociation(models.Model):
