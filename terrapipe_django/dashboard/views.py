@@ -9,7 +9,8 @@ import uuid
 import json
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
-from .models import User, UserFields
+from dashboard.models import User  # Correct import
+from .models import UserFields
 
 from django.http import JsonResponse, HttpResponse
 import requests
@@ -120,9 +121,8 @@ def login(request):
 @require_GET
 def get_user_geoids_with_details(request):
     """
-        Fetch all geo_ids and field names for a given user_id (registry UUID).
-        """
-
+    Fetch all geo_ids and field names for a given user_id (registry UUID).
+    """
     user_registry_id_str = request.GET.get('user_id')
     if not user_registry_id_str:
         return JsonResponse({"message": "Missing user_id"}, status=400)
@@ -132,7 +132,9 @@ def get_user_geoids_with_details(request):
     except ValueError:
         return JsonResponse({"message": "Invalid UUID format"}, status=400)
 
+    # user = User.objects.only("id").filter(user_registry_id=user_registry_id).first()
     user = User.objects.only("id").filter(user_registry_id=user_registry_id).first()
+
     if not user:
         return JsonResponse({"message": "User not found"}, status=404)
 
@@ -144,18 +146,13 @@ def get_user_geoids_with_details(request):
     for geo_id in user_fields:
         try:
             response = requests.get(f"{asset_url_base}fetch-field/{geo_id}")
-            if response.ok:
-                field_data = response.json()
-                
-                field_name = field_data.get("field_name", "Unknown")
-                fields_info.append({
-                    "geo_id": geo_id,
-                    # "field_name": field_name
-                })
-            else:
-                continue  # Skip if fetch failed
-
-        except Exception as e:
+            response.raise_for_status()
+            field_data = response.json()
+            fields_info.append({
+                "geo_id": geo_id,
+                # "field_name": field_data.get("field_name", "Unknown")
+            })
+        except requests.RequestException as e:
             continue  # Log error if needed
 
     return JsonResponse({
@@ -175,6 +172,7 @@ def get_user_geoids(request):
         return JsonResponse({"message": "Invalid user_id format"}, status=400)
 
     user = User.objects.filter(user_registry_id=user_registry_id).only('id').first()
+
     if not user:
         return JsonResponse({"message": "User not found"}, status=404)
 

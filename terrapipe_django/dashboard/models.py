@@ -1,3 +1,4 @@
+
 import uuid
 from django.db import models
 from django.utils import timezone
@@ -8,23 +9,27 @@ from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseU
 
 
 class CustomUserManager(BaseUserManager):
-    def create_user(self, user_registry_id, email=None, password=None, **extra_fields):
-        if not user_registry_id:
-            raise ValueError('The user_registry_id must be set')
-        user = self.model(user_registry_id=user_registry_id, email=email, **extra_fields)
+    def create_user(self, email, password=None, **extra_fields):
+        if not email:
+            raise ValueError('Users must have an email address')
+        email = self.normalize_email(email)
+        extra_fields.setdefault('user_registry_id', uuid.uuid4())  # ensure it's filled
+        user = self.model(email=email, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, user_registry_id, email=None, password=None, **extra_fields):
+    def create_superuser(self, email, password=None, **extra_fields):
         extra_fields.setdefault('is_admin', True)
         extra_fields.setdefault('is_superuser', True)
-        return self.create_user(user_registry_id, email, password, **extra_fields)
+        return self.create_user(email, password, **extra_fields)
 
 
-class User(AbstractBaseUser, PermissionsMixin):  # ✅ Must inherit these two
+
+class User(AbstractBaseUser, PermissionsMixin):  
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user_registry_id = models.UUIDField(unique=True)
+    # user_registry_id = models.UUIDField(unique=True)
+    user_registry_id = models.UUIDField(unique=True, default=uuid.uuid4, editable=False)
     email = models.EmailField(max_length=255, unique=True, null=True, blank=True)
     phone_num = models.CharField(max_length=255, null=True, blank=True)
     access_token = models.CharField(max_length=255, null=True, blank=True)
@@ -35,16 +40,17 @@ class User(AbstractBaseUser, PermissionsMixin):  # ✅ Must inherit these two
     stripe_customer_id = models.CharField(max_length=255, unique=True, null=True, blank=True)
     is_admin = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
+    is_staff = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     objects = CustomUserManager()
 
-    USERNAME_FIELD = 'user_registry_id'  # ✅ Required
-    REQUIRED_FIELDS = ['email']  # ✅ Required
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = []
 
     def __str__(self):
-        return self.email or str(self.user_registry_id)
+        return self.email
 
     class Meta:
         db_table = 'users'
