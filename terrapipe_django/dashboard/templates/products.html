@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+
+{% block title %}Products - Terrapipe{% endblock %}
+
+{% block content %}
+<h2>Available Products</h2>
+<ul id="products-list"></ul>
+<p class="text-danger" id="error"></p>
+
+<script>
+window.onload = async () => {
+    const token = localStorage.getItem("access_token");
+    if (!token) {
+        window.location.href = "{% url 'login_page' %}";
+        return;
+    }
+
+    const res = await fetch("{% url 'products' %}", {
+        headers: { "Authorization": "Bearer " + token }
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+        document.getElementById("products-list").innerHTML =
+            data.products.map(p => `<li>${p.name} </li>`).join("");
+    } else {
+        document.getElementById("error").innerText = data.message || data.error;
+    }
+};
+</script>
+{% endblock %}

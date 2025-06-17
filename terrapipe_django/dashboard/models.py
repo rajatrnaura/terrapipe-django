@@ -1,101 +1,137 @@
-from django.db import models
-import uuid
-from django.contrib.auth.models import PermissionsMixin, UserManager
-from django.contrib.auth.base_user import AbstractBaseUser
 
-class CustomUserManager(UserManager):
-    def create_user(self, email, user_registry_id, password=None, **extra_fields):
+import uuid
+from django.db import models
+from django.utils import timezone
+from django.contrib.auth import get_user_model
+from django.contrib.postgres.fields import ArrayField
+from django.db.models import JSONField
+from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
+
+
+class CustomUserManager(BaseUserManager):
+    def create_user(self, email, password=None, **extra_fields):
         if not email:
-            raise ValueError('The Email field must be set')
+            raise ValueError('Users must have an email address')
         email = self.normalize_email(email)
-        user = self.model(email=email, user_registry_id=user_registry_id, **extra_fields)
-        if password:
-            user.set_password(password)
+        extra_fields.setdefault('user_registry_id', uuid.uuid4())  # ensure it's filled
+        user = self.model(email=email, **extra_fields)
+        user.set_password(password)
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, email, user_registry_id, password=None, **extra_fields):
+    def create_superuser(self, email, password=None, **extra_fields):
         extra_fields.setdefault('is_admin', True)
-        return self.create_user(email, user_registry_id, password, **extra_fields)
+        extra_fields.setdefault('is_superuser', True)
+        return self.create_user(email, password, **extra_fields)
 
-class ProductOffer(models.Model):
+
+
+class User(AbstractBaseUser, PermissionsMixin):  
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=255, unique=True)
-    description = models.TextField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        managed = False
-        db_table = 'product_offers'
-
-    def __str__(self):
-        return self.name
-
-class User(AbstractBaseUser, PermissionsMixin):
-    user_registry_id = models.CharField(max_length=36, unique=True)
-    email = models.EmailField(unique=True)
-    phone_num = models.CharField(max_length=15, null=True, blank=True)
+    # user_registry_id = models.UUIDField(unique=True)
+    user_registry_id = models.UUIDField(unique=True, default=uuid.uuid4, editable=False)
+    email = models.EmailField(max_length=255, unique=True, null=True, blank=True)
+    phone_num = models.CharField(max_length=255, null=True, blank=True)
+    access_token = models.CharField(max_length=255, null=True, blank=True)
+    refresh_token = models.CharField(max_length=255, null=True, blank=True)
     coordinates = models.JSONField(null=True, blank=True)
     product_offer_id = models.UUIDField(null=True, blank=True)
-    access_token = models.TextField(null=True, blank=True)
-    refresh_token = models.TextField(null=True, blank=True)
+    cart_id = models.UUIDField(null=True, blank=True)
+    stripe_customer_id = models.CharField(max_length=255, unique=True, null=True, blank=True)
     is_admin = models.BooleanField(default=False)
-    created_at = models.DateTimeField()
+    is_active = models.BooleanField(default=True)
+    is_staff = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     objects = CustomUserManager()
 
     USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = ['user_registry_id']
-
-    class Meta:
-        managed = False
-        db_table = 'users'
+    REQUIRED_FIELDS = []
 
     def __str__(self):
         return self.email
 
-    groups = models.ManyToManyField(
-        'auth.Group',
-        verbose_name='groups',
-        blank=True,
-        help_text='The groups this user belongs to.',
-        related_name='custom_user_set',
-        related_query_name='custom_user',
-    )
-    user_permissions = models.ManyToManyField(
-        'auth.Permission',
-        verbose_name='user permissions',
-        blank=True,
-        help_text='Specific permissions for this user.',
-        related_name='custom_user_set',
-        related_query_name='custom_user',
-    )
-
-class RegistryUser(models.Model):
-    id = models.CharField(max_length=36, primary_key=True)
-    email = models.EmailField(unique=True)
-    password = models.CharField(max_length=255)
-    phone_num = models.CharField(max_length=15, null=True, blank=True)
-    lat_lng = models.JSONField(null=True, blank=True)
-    device_id = models.CharField(max_length=255, null=True, blank=True)
-    access_token = models.TextField(null=True, blank=True)
-    refresh_token = models.TextField(null=True, blank=True)
-    created_at = models.DateTimeField()
-    updated_at = models.DateTimeField()
-    activated = models.BooleanField(default=False)
-
     class Meta:
-        managed = False
         db_table = 'users'
 
-class Limits(models.Model):
-    user_registry_id = models.CharField(max_length=36, unique=True)
-    max_device = models.IntegerField(default=1)
-    max_api_key = models.IntegerField(default=1)
-    max_request = models.IntegerField(default=100)
+class Fields(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    geo_id = models.CharField(max_length=255, null=True)
+    created_at = models.DateTimeField(null=True)
+    updated_at = models.DateTimeField(null=True)
+
+    def __str__(self):
+        return f'<{self.id}>'
 
     class Meta:
+        db_table = 'fields'
         managed = False
-        db_table = 'limits'
+        constraints = [
+            models.UniqueConstraint(fields=['id', 'geo_id'], name='unique_field_geo_id')
+        ]
+
+class UserFields(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey('User', on_delete=models.CASCADE, db_column='user_id')
+    field = models.ForeignKey('Fields', on_delete=models.CASCADE, db_column='field_id')
+    field_name = models.CharField(max_length=255, null=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f'<{self.id}>'
+
+    def save(self, *args, **kwargs):
+        self.updated_at = timezone.now()
+        super().save(*args, **kwargs)
+
+    class Meta:
+        db_table = 'users_fields'
+        managed = False
+        unique_together = ('user', 'field')
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'field'], name='unique_user_id_field_id')
+        ]
+
+
+User = get_user_model()
+
+class Application(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # Fields you're keeping or modifying:
+    root = models.CharField(max_length=255, unique=True)
+    description = models.TextField(null=True, blank=True)
+    picture = models.TextField(null=True, blank=True)
+    dev_stage = models.CharField(max_length=100, null=True, blank=True)
+    company = models.CharField(max_length=255, null=True, blank=True)
+    create_date = models.DateTimeField(auto_now_add=True)
+    price_scope_month = models.FloatField(null=True, blank=True)
+
+    type = ArrayField(models.CharField(max_length=50), null=True, blank=True)
+    authors = ArrayField(models.CharField(max_length=100), null=True, blank=True)
+    meta_data = JSONField(null=True, blank=True)
+
+    def __str__(self):
+        return self.root
+
+    class Meta:
+        db_table = "applications"
+
+
+class UserApplicationAssociation(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    application = models.ForeignKey(Application, on_delete=models.CASCADE)
+    creation_date = models.DateTimeField(null=True, blank=True)
+    api_called = models.IntegerField(null=True, blank=True)
+    served_data_size = models.FloatField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'user_application_association'
+        unique_together = ('user', 'application')
+        verbose_name = 'User Application Association'
+        verbose_name_plural = 'User Application Associations'
+
+    def __str__(self):
+        return f"{self.user} - {self.application.root}"

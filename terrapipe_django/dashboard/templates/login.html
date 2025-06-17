@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+
+{% block title %}Login - Terrapipe{% endblock %}
+
+{% block content %}
+<h2>Login</h2>
+<form id="login-form" method="post">
+  <div class="mb-3">
+    <label for="email" class="form-label">Email:</label>
+    <input type="email" class="form-control" id="email" name="email" required>
+  </div>
+  <div class="mb-3">
+    <label for="password" class="form-label">Password:</label>
+    <input type="password" class="form-control" id="password" name="password" required>
+  </div>
+  <p class="text-danger" id="login-error"></p>
+  <button type="submit" class="btn btn-primary">Login</button>
+</form>
+
+<script>
+// redrict already logged in
+const token = localStorage.getItem("access_token");
+if (token) {
+  window.location.href = "{% url 'products_page' %}";
+}
+
+document.getElementById("login-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const email = e.target.email.value;
+    const password = e.target.password.value;
+
+    const res = await fetch("{% url 'login' %}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+        localStorage.setItem("access_token", data.access_token);
+        window.location.href = "{% url 'products_page' %}";
+    } else {
+        document.getElementById("login-error").innerText = data.message || data.error;
+    }
+};
+</script>
+{% endblock %}

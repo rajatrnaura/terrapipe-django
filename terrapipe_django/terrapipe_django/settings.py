@@ -11,7 +11,6 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 from pathlib import Path
-from datetime import timedelta
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -26,7 +25,7 @@ SECRET_KEY = 'django-insecure-+)ir4dv0dv%_o6refv86o&w003yum-#+q0=)whh1*vrb0#9()p
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+ALLOWED_HOSTS = []
 
 
 # Application definition
@@ -38,8 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'rest_framework',
-    'dashboard.apps.DashboardConfig'
+    'dashboard'
 ]
 
 MIDDLEWARE = [
@@ -70,54 +68,37 @@ TEMPLATES = [
     },
 ]
 
+
+JWT_SECRET_KEY = 'tFV0kGlq0r48ZS-0IUFxIh1VHvh62qsSP6ZsgahTBPk'
 WSGI_APPLICATION = 'terrapipe_django.wsgi.application'
+AUTH_USER_MODEL = 'dashboard.User'
 
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
+#     }
+# }
+
+
+# settings.py
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'terrapipe_be',
-        'USER': 'postgres',
-        'PASSWORD': '12345',
-        'HOST': 'localhost',
-        'PORT': '5432',
-    },
-    'user_registry': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'user_registry_db',
-        'USER': 'postgres',
-        'PASSWORD': '12345',
-        'HOST': 'localhost',
-        'PORT': '5432',
+        'NAME': 'terrapipe_be',           # Database name
+        'USER': 'terrapipe',              # Database user
+        'PASSWORD': 'pass1234!',          # Database password
+        'HOST': '66.220.3.87',          # Remote server IP or hostname
+        'PORT': '5432',                   # PostgreSQL port
     }
 }
 
-AUTHENTICATION_BACKENDS = [
-    'dashboard.auth.UserRegistryBackend',
-    'django.contrib.auth.backends.ModelBackend',
-]
 
-REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-        'django.contrib.auth.backends.ModelBackend',
-    ],
-}
-
-SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
-    'ROTATE_REFRESH_TOKENS': True,
-    'BLACKLIST_AFTER_ROTATION': True,
-    'AUTH_HEADER_TYPES': ('Bearer',),
-    'USER_ID_FIELD': 'user_registry_id',
-    'USER_ID_CLAIM': 'sub',
-    'ALGORITHM': 'HS256',
-    'SIGNING_KEY': '4h%ji1srx2lx7gahi@=z5*len0-7nf*(h1$3uj$pdeh3^0i=-3',  # Matches Django's SECRET_KEY or set separately
-}
+# AUTH_USER_MODEL = 'dashboard.User'
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
@@ -149,20 +130,11 @@ USE_I18N = True
 
 USE_TZ = True
 
-SESSION_ENGINE = 'django.contrib.sessions.backends.db'
-SESSION_COOKIE_SECURE = False  # False for local testing
-SESSION_COOKIE_SAMESITE = 'Lax'
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
-STATIC_URL = '/static/'
-STATICFILES_DIRS = [BASE_DIR / 'static']
-STATIC_ROOT = BASE_DIR / 'staticfiles'
-
-
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-EMAIL_FROM = 'no-reply@terrapipe.com'
+STATIC_URL = 'static/'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field

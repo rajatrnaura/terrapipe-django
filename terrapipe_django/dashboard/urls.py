@@ -1,15 +1,11 @@
+# urls.py (add this to your URLs configuration)
 from django.urls import path
-from . import views
-
-app_name = 'dashboard'
+from .views import get_user_geoids ,login,  get_user_geoids_with_details , products , products_page , login_page
 
 urlpatterns = [
-    path('', views.home, name='home'),
-    path('login/', views.login_view, name='login'),
-    path('signup/', views.signup_view, name='signup'),
-    path('profile/', views.profile_view, name='profile'),
-    path('logout/', views.logout_view, name='logout'),
-    path('forgot-password/', views.forgot_password_view, name='forgot_password'),
-    path('reset-password/<str:token>/', views.reset_password_view, name='reset_password'),
-    path('update/', views.update_view, name='update'),
+    path('login/', login, name='login'),
+    path('get-user-geoids/', get_user_geoids_with_details, name='get_user_geoids'),
+    path('', login_page, name='login_page'),
+    path('products/', products, name='products'),
+    path('products_page/', products_page, name='products_page')
 ]
