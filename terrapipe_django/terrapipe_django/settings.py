@@ -71,6 +71,7 @@ TEMPLATES = [
 
 JWT_SECRET_KEY = 'tFV0kGlq0r48ZS-0IUFxIh1VHvh62qsSP6ZsgahTBPk'
 WSGI_APPLICATION = 'terrapipe_django.wsgi.application'
+AUTH_USER_MODEL = 'dashboard.User'
 
 
 # Database
@@ -95,6 +96,9 @@ DATABASES = {
         'PORT': '5432',                   # PostgreSQL port
     }
 }
+
+
+# AUTH_USER_MODEL = 'dashboard.User'
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
