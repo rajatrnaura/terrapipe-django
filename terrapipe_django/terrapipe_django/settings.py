@@ -94,7 +94,15 @@ DATABASES = {
         'PASSWORD': 'pass1234!',          # Database password
         'HOST': '66.220.3.87',          # Remote server IP or hostname
         'PORT': '5432',                   # PostgreSQL port
-    }
+    },
+        'node1_db': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'terrapipe_backend',
+        'USER': 'tp_admin',
+        'PASSWORD': 'tp_admin@1234',
+        'HOST': '66.220.3.92',
+        'PORT': '5432',
+    },
 }
 
 

@@ -6,6 +6,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.postgres.fields import ArrayField
 from django.db.models import JSONField
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
+from django.conf import settings
 
 
 class CustomUserManager(BaseUserManager):
@@ -34,7 +35,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     phone_num = models.CharField(max_length=255, null=True, blank=True)
     access_token = models.CharField(max_length=255, null=True, blank=True)
     refresh_token = models.CharField(max_length=255, null=True, blank=True)
-    coordinates = models.JSONField(null=True, blank=True)
+    # coordinates = models.JSONField(null=True, blank=True)
+    coordinates = models.TextField(null=True, blank=True)
     product_offer_id = models.UUIDField(null=True, blank=True)
     cart_id = models.UUIDField(null=True, blank=True)
     stripe_customer_id = models.CharField(max_length=255, unique=True, null=True, blank=True)
@@ -67,10 +69,10 @@ class Fields(models.Model):
     class Meta:
         db_table = 'fields'
         managed = False
-        constraints = [
-            models.UniqueConstraint(fields=['id', 'geo_id'], name='unique_field_geo_id')
-        ]
-
+        verbose_name = "Field"
+        verbose_name_plural = "Fields"
+        
+        
 class UserFields(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey('User', on_delete=models.CASCADE, db_column='user_id')
@@ -93,25 +95,44 @@ class UserFields(models.Model):
         constraints = [
             models.UniqueConstraint(fields=['user', 'field'], name='unique_user_id_field_id')
         ]
+        verbose_name = "User Field"
+        verbose_name_plural = "User Fields"
 
 
-User = get_user_model()
+# class Application(models.Model):
+#     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+#     type = ArrayField(models.CharField(max_length=50), null=True, blank=True)
+#     description = models.TextField(null=True, blank=True)
+#     authors = ArrayField(models.CharField(max_length=100), null=True, blank=True)
+#     company = models.CharField(max_length=255, null=True, blank=True)
+#     create_date = models.DateTimeField(auto_now_add=True)
+#     picture = models.TextField(null=True, blank=True)
+#     dev_stage = models.CharField(max_length=100, null=True, blank=True)
+#     price_scope_month = models.FloatField(null=True, blank=True)
+#     root = models.CharField(max_length=255, unique=True)
+#     meta_data = JSONField(null=True, blank=True)  # must be jsonb now in DB
+
+#     def __str__(self):
+#         return self.root
+
+#     class Meta:
+#         db_table = "applications"
+
 
 class Application(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-
-    # Fields you're keeping or modifying:
-    root = models.CharField(max_length=255, unique=True)
+    type = ArrayField(models.CharField(max_length=50), null=True, blank=True)
     description = models.TextField(null=True, blank=True)
-    picture = models.TextField(null=True, blank=True)
-    dev_stage = models.CharField(max_length=100, null=True, blank=True)
+    authors = ArrayField(models.CharField(max_length=100), null=True, blank=True)
     company = models.CharField(max_length=255, null=True, blank=True)
     create_date = models.DateTimeField(auto_now_add=True)
+    picture = models.TextField(null=True, blank=True)
+    dev_stage = models.CharField(max_length=100, null=True, blank=True)
     price_scope_month = models.FloatField(null=True, blank=True)
-
-    type = ArrayField(models.CharField(max_length=50), null=True, blank=True)
-    authors = ArrayField(models.CharField(max_length=100), null=True, blank=True)
+    root = models.CharField(max_length=255, unique=True)  # this is your identifier
     meta_data = JSONField(null=True, blank=True)
+    
 
     def __str__(self):
         return self.root
@@ -121,17 +142,77 @@ class Application(models.Model):
 
 
 class UserApplicationAssociation(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    application = models.ForeignKey(Application, on_delete=models.CASCADE)
+    user = models.ForeignKey(
+        User,
+        to_field='user_registry_id',
+        on_delete=models.CASCADE,
+    )
+    application = models.ForeignKey(
+        'Application', 
+        to_field='id',
+        on_delete=models.CASCADE,
+        db_column='application_id'
+    )
     creation_date = models.DateTimeField(null=True, blank=True)
-    api_called = models.IntegerField(null=True, blank=True)
     served_data_size = models.FloatField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    unique_id = models.IntegerField(null=True, blank=True)
+    api_called = models.JSONField(null=True, blank=True)
 
     class Meta:
         db_table = 'user_application_association'
         unique_together = ('user', 'application')
-        verbose_name = 'User Application Association'
-        verbose_name_plural = 'User Application Associations'
+
+
+
+
+# class UserApplicationAssociation(models.Model):
+#     user = models.ForeignKey(User, on_delete=models.CASCADE)
+#     application = models.ForeignKey(Application, on_delete=models.CASCADE)
+#     creation_date = models.DateTimeField()
+#     served_data_size = models.CharField(max_length=255)
+#     is_active = models.BooleanField(default=True)
+#     # api_called = models.JSONField(default=dict)
+#     api_called = models.TextField(default='{}')
+
+
+#     def __str__(self):
+#         return f"{self.user.email} - {self.application.name}"
+    
+#     class Meta:
+#         db_table = "user_application_association"
+
+
+
+
+class UserAuthorizationsAccess(models.Model):
+    
+    
+    VISIBILITY_CHOICES = (
+        ('public', 'Public'),
+        ('private', 'Private'),
+    )
+    user = models.ForeignKey(
+        User,
+        to_field='user_registry_id',
+        on_delete=models.CASCADE,
+    )
+    application = models.ForeignKey(Application, on_delete=models.CASCADE)
+    is_active = models.BooleanField(default=False, help_text="Toggle access to APIs")
+    visibility = models.CharField(max_length=10, choices=VISIBILITY_CHOICES, default='private') 
+    created_at = models.DateTimeField(auto_now=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'application')
+        db_table = 'user_authorizations_access'
+        verbose_name = "User Authorization Access"
+        verbose_name_plural = "User Authorization Access"
 
     def __str__(self):
-        return f"{self.user} - {self.application.root}"
+        user_email = self.user.email if self.user else "Unknown User"
+        app_name = self.application.root if self.application else "Unknown App"
+        status = "Active" if self.is_active else "Inactive"
+        return f"{user_email} - {app_name} ({status})"
+
+

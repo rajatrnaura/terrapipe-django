@@ -12,9 +12,9 @@ from django.core.exceptions import ValidationError
 from dashboard.models import User  # Correct import
 from .models import UserFields
 
-from django.http import JsonResponse, HttpResponse
-import requests
+from django.http import JsonResponse
 from django.conf import settings
+from django.db import connections
 
 from dotenv import load_dotenv
 import os
@@ -45,7 +45,6 @@ def token_required(view_func):
 @csrf_exempt
 def login(request):
     
-    # curl -X POST "http://127.0.0.1:8000/api/login/" -H "Content-Type: application/json" -d '{"email": "demo@gmail.com", "password": "Admin@1234"}'
     try:
         # Parse the request body as JSON
         data = json.loads(request.body)
@@ -117,193 +116,63 @@ def login(request):
             status=400
         )
 
-
 @require_GET
 def get_user_geoids_with_details(request):
-    """
-    Fetch all geo_ids and field names for a given user_id (registry UUID).
-    """
-    user_registry_id_str = request.GET.get('user_id')
+    user_registry_id_str = request.GET.get("user_id")
+    product_id_str = request.GET.get("product_id")
+
     if not user_registry_id_str:
         return JsonResponse({"message": "Missing user_id"}, status=400)
 
     try:
-        user_registry_id = uuid.UUID(user_registry_id_str)
+        user_registry_id = str(uuid.UUID(user_registry_id_str))
     except ValueError:
-        return JsonResponse({"message": "Invalid UUID format"}, status=400)
+        return JsonResponse({"message": "Invalid UUID format for user_id"}, status=400)
 
-    # user = User.objects.only("id").filter(user_registry_id=user_registry_id).first()
+    # Check if user exists locally
     user = User.objects.only("id").filter(user_registry_id=user_registry_id).first()
-
     if not user:
         return JsonResponse({"message": "User not found"}, status=404)
 
-    user_fields = UserFields.objects.select_related('field').filter(user_id=user.id).values_list('field__geo_id', flat=True)
+    # Query the remote Node1 DB
+    with connections['node1_db'].cursor() as cursor:
+        if product_id_str:
+            try:
+                product_id = str(uuid.UUID(product_id_str))
+            except ValueError:
+                return JsonResponse({"message": "Invalid UUID format for product_id"}, status=400)
+
+            cursor.execute("""
+                SELECT DISTINCT product_id
+                FROM subscriptions
+                WHERE user_id = %s AND product_id = %s AND subscription_status = 'active'
+            """, [user_registry_id, product_id])
+        else:
+            cursor.execute("""
+                SELECT DISTINCT product_id
+                FROM subscriptions
+                WHERE user_id = %s AND subscription_status = 'active'
+            """, [user_registry_id])
+
+        rows = cursor.fetchall()
+        product_ids = [r[0] for r in rows]
+
+    if not product_ids:
+        return JsonResponse({"message": "No active subscription(s) found for this user"}, status=404)
+
+    # Fetch geo_ids locally
+    user_fields = UserFields.objects.select_related('field').filter(user_id=user.id)
+    user_geo_ids = list(user_fields.values_list("field__geo_id", flat=True))
 
     asset_url_base = os.getenv("ASSET_REGISTRY_BASE_URL", "https://api-ar.agstack.org/")
-    fields_info = []
+    response_data = {}
 
-    for geo_id in user_fields:
-        try:
-            response = requests.get(f"{asset_url_base}fetch-field/{geo_id}")
-            response.raise_for_status()
-            field_data = response.json()
-            fields_info.append({
-                "geo_id": geo_id,
-                # "field_name": field_data.get("field_name", "Unknown")
-            })
-        except requests.RequestException as e:
-            continue  # Log error if needed
+    for pid in product_ids:
+        response_data[pid] = {
+            "geo_ids": user_geo_ids
+        }
 
     return JsonResponse({
-        "message": "GeoID and field name list retrieved successfully",
-        "fields": fields_info
+        "message": "GeoID list retrieved successfully",
+        "fields": response_data
     }, status=200)
-        
-        
-def get_user_geoids(request):
-    user_registry_id_str = request.GET.get('user_id')
-    if not user_registry_id_str:
-        return JsonResponse({"message": "Missing user_id query parameter"}, status=400)
-
-    try:
-        user_registry_id = uuid.UUID(user_registry_id_str)
-    except ValueError:
-        return JsonResponse({"message": "Invalid user_id format"}, status=400)
-
-    user = User.objects.filter(user_registry_id=user_registry_id).only('id').first()
-
-    if not user:
-        return JsonResponse({"message": "User not found"}, status=404)
-
-    user_fields = UserFields.objects.select_related('field').filter(user_id=user.id)
-
-    geoid_fieldname_list = [
-        {
-            "geo_id": uf.field.geo_id,
-            "field_name": uf.field_name  # or uf.field.name
-        }
-        for uf in user_fields if uf.field and uf.field.geo_id
-    ]
-
-    return JsonResponse(
-        {
-            "message": "GeoIDs retrieved successfully",
-            "geo_ids": geoid_fieldname_list
-        },
-        status=200
-    )
-
-
-# @require_GET
-# @token_required
-# def get_user_geoids(request):
-    
-# #     curl -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1ZDE1ZTJkZC1mZWI1LTRmMGMtOTMxNC03NzYwY2Q4NmQ0NzQiLCJ1dWlkIjoiNWQxNWUyZGQtZmViNS00ZjBjLTkzMTQtNzc2MGNkODZkNDc0IiwiaWF0IjoxNzQ5ODMyOTE2LCJleHAiOjE3NDk4MzY1MTZ9.KiWD4mrD1vexg8mtaz-9EatcLcZgz_u_U86wetooD6o" \
-# # "http://127.0.0.1:8000/api/get-user-geoids/"
-    
-#     try:
-#         user_registry_id = request.decoded_user.get('sub')
-        
-#         user = User.objects.filter(user_registry_id=user_registry_id).first()
-#         if not user:
-#             return JsonResponse(
-#                 {"message": "User not found"},
-#                 status=404
-#             )
-
-#         user_id = user.id
-#         # user_id = 'c027cffc-49df-42fb-b02c-2d5c0de37328'
-#         field_ids = UserFields.objects.filter(user_id=user_id).values_list('field_id', flat=True)
-#         if not field_ids:
-#             return JsonResponse(
-#                 {
-#                     "message": "No fields found for this user",
-#                     "geo_ids": []
-#                 },
-#                 status=200
-#             )
-
-#         user_geo_ids = Fields.objects.filter(id__in=field_ids).values_list('geo_id', flat=True)
-
-#         if not user_geo_ids:
-#             return JsonResponse(
-#                 {
-#                     "message": "No GeoIDs found for this user",
-#                     "geo_ids": []
-#                 },
-#                 status=200
-#             )
-
-#         return JsonResponse(
-#             {
-#                 "message": "GeoIDs retrieved successfully",
-#                 "geo_ids": list(user_geo_ids)
-#             },
-#             status=200
-#         )
-
-#     except Exception as e:
-#         return JsonResponse(
-#             {
-#                 "message": "Error retrieving GeoIDs",
-#                 "error": str(e)
-#             },
-#             status=400
-#         )
-        
-        
-# @require_GET
-# def get_user_geoids(request):
-#     try:
-#         # Get the user_id from query parameters
-#         user_id = request.GET.get('user_id')
-
-#         # Check if user_id is provided
-#         if not user_id:
-#             return JsonResponse(
-#                 {"message": "User ID is required"},
-#                 status=400
-#             )
-
-#         # Fetch field_ids associated with the user from users_fields
-#         field_ids = UserFields.objects.filter(user_id=user_id).values_list('field_id', flat=True)
-
-#         if not field_ids:
-#             return JsonResponse(
-#                 {
-#                     "message": "No fields found for this user",
-#                     "geo_ids": []
-#                 },
-#                 status=200
-#             )
-
-#         # Fetch geo_ids from the fields table where id matches the field_ids
-#         user_geo_ids = Fields.objects.filter(id__in=field_ids).values_list('geo_id', flat=True)
-
-#         if not user_geo_ids:
-#             return JsonResponse(
-#                 {
-#                     "message": "No GeoIDs found for this user",
-#                     "geo_ids": []
-#                 },
-#                 status=200
-#             )
-
-#         # Convert QuerySet to list and return
-#         return JsonResponse(
-#             {
-#                 "message": "GeoIDs retrieved successfully",
-#                 "geo_ids": list(user_geo_ids)
-#             },
-#             status=200
-#         )
-
-#     except Exception as e:
-#         return JsonResponse(
-#             {
-#                 "message": "Error retrieving GeoIDs",
-#                 "error": str(e)
-#             },
-#             status=400
-#         )
