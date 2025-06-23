@@ -10,7 +10,7 @@ import json
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
 from dashboard.models import User  # Correct import
-from .models import UserFields
+from .models import UserFields , Application
 
 from django.http import JsonResponse, HttpResponse
 import requests
@@ -19,6 +19,12 @@ from django.conf import settings
 from dotenv import load_dotenv
 import os
 from django.shortcuts import render
+
+from django.http import JsonResponse
+from dashboard.models import User, UserFields  # Replace 'yourapp' with the correct app name
+from django.db.models import F
+
+import re
 
 load_dotenv()
 
@@ -95,7 +101,8 @@ def login(request):
             'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=1)  # Token expires in 1 hour
         }
         token = jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm='HS256')
-
+        request.session['access_token'] = token
+        request.session['user_registry_id'] = user_registry_id 
         # Return the token in the response
         return JsonResponse(
             {
@@ -118,6 +125,13 @@ def login(request):
             },
             status=400
         )
+
+
+@require_POST
+@csrf_exempt
+def logout_view(request):
+    request.session.flush()  # clears all session data
+    return JsonResponse({"message": "Logged out successfully"})
 
 
 @require_GET
@@ -310,16 +324,35 @@ def get_user_geoids(request):
 #             status=400
 #         )
 
+# @token_required
+# def products(request):
+#     products = [
+#         {"id": 1, "name": "Product A"},
+#         {"id": 2, "name": "Product B"},
+#         {"id": 3, "name": "Product C"},
+#     ]
+#     return JsonResponse({
+#         'message': f'Welcome, user {request.decoded_user["sub"]}!',
+#         'products': products
+#     })
+
 @token_required
 def products(request):
-    products = [
-        {"id": 1, "name": "Product A"},
-        {"id": 2, "name": "Product B"},
-        {"id": 3, "name": "Product C"},
+    applications = Application.objects.all().values('id', 'root', 'description', 'picture')
+    
+    data = [
+        {
+            "id": str(app['id']),
+            "root": app['root'],
+            "description": app['description'],
+            "picture": app['picture']
+        }
+        for app in applications
     ]
+    
     return JsonResponse({
         'message': f'Welcome, user {request.decoded_user["sub"]}!',
-        'products': products
+        'products': data
     })
 
 
@@ -332,3 +365,109 @@ def products_page(request):
     return render(request, 'products.html', {
         'token': request.COOKIES.get('access_token')
     })
+
+
+
+FIELD_BOUNDARIES = {
+    "8e5837ead80d421ce0505fad661052109a87aaefc4c992a34b5b34be1c81010d": {
+        "type": "Polygon",
+        "coordinates": [[[76.7, 30.9], [76.8, 30.9], [76.8, 31.0], [76.7, 31.0], [76.7, 30.9]]]
+    },
+    "4ab84f94b206cd54f7acb7599c488c4f8cb672c13b9cc07fc26ecabff27f4259": {
+        "type": "Polygon",
+        "coordinates": [[[76.5, 30.7], [76.6, 30.7], [76.6, 30.8], [76.5, 30.8], [76.5, 30.7]]]
+    }
+}
+
+def map_view(request):
+    return render(request, "map.html")
+
+
+def get_user_registry_id_from_session(request):
+    user_registry_id = request.session.get('user_registry_id')
+    if not user_registry_id:
+        return None
+
+    return user_registry_id
+    
+# def get_geoids(request):
+#     user_registry_id = get_user_registry_id_from_session(request)
+#     print(f"user_registry_id_str : {user_registry_id}")
+#     return JsonResponse({"geoids": GEOIDS})
+
+# def get_geoids(request):
+#     # user_registry_id = get_user_registry_id_from_session(request)
+#     # print(f"user_registry_id_str : {user_registry_id}")
+#     token = request.session.get('access_token')
+#     print(f"token : {token}")
+
+#     user_registry_id = request.session.get('user_registry_id')
+
+#     print(f"user_registry_id : {user_registry_id}")
+
+#     # You might need to send auth headers or pass the user_registry_id in some way depending on your API's auth method.
+#     # Assuming you have a token or some auth header to pass:
+#     headers = {
+#         "Authorization": f"Bearer {token}" 
+#     }
+
+#     try:
+#         response = requests.get(
+#             "https://api.terrapipe.io/geo-id",
+#             headers=headers,
+#             timeout=10
+#         )
+#         response.raise_for_status()
+
+#         data = response.json()
+#         return JsonResponse(data, status=200)
+
+#     except requests.exceptions.RequestException as e:
+#         return JsonResponse({"error": f"Failed to fetch geo IDs: {str(e)}"}, status=500)
+    
+
+# Match 64-character hex strings only (no dashes, lowercase/uppercase)
+VALID_GEO_ID_REGEX = re.compile(r'^[a-f0-9]{64}$', re.IGNORECASE)
+
+def get_geoids(request):
+    try:
+        user_registry_id = request.session.get('user_registry_id')
+        if not user_registry_id:
+            return JsonResponse({'message': 'User not authenticated'}, status=401)
+
+        try:
+            user = User.objects.get(user_registry_id=user_registry_id)
+        except User.DoesNotExist:
+            return JsonResponse({'message': 'User not found'}, status=404)
+
+        geo_data = (
+            UserFields.objects
+            .filter(user=user)
+            .select_related('field')
+            .values_list('field__geo_id', flat=True)
+        )
+
+        # Filter and deduplicate
+        geo_ids = list({
+            geo_id for geo_id in geo_data
+            if geo_id and VALID_GEO_ID_REGEX.fullmatch(geo_id)
+        })
+
+        if not geo_ids:
+            return JsonResponse({'message': 'No valid Geo Ids found for the user.'}, status=404)
+
+        return JsonResponse({
+            'message': 'Geo Ids fetched Successfully',
+            'geoids': geo_ids
+        }, status=200)
+
+    except Exception as e:
+        return JsonResponse({
+            'message': 'Fetch Geo Id(s) Error :::',
+            'error': str(e)
+        }, status=400)
+
+
+def get_field_boundary(request, geoid):
+    geometry = FIELD_BOUNDARIES.get(geoid)
+    return JsonResponse({"geoid": geoid, "geometry": geometry})

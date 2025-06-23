@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    background: none !important;
+    background-color: #000 !important;
+  }
+
+  #map-container {
+    display: flex;
+    position: absolute;
+    top: 60px; /* height of navbar */
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: calc(100vh - 60px);
+  }
+
+  #map {
+    flex-grow: 1;
+    height: 100%;
+    width: 100%;
+  }
+
+  #field-sidebar {
+    width: 360px;
+    background-color: #1a1a2e;
+    color: white;
+    overflow-y: auto;
+    padding: 15px;
+    font-family: 'Segoe UI', sans-serif;
+    border-left: 1px solid #111;
+  }
+
+  .leaflet-mini {
+    height: 140px;
+    border-radius: 10px;
+    margin-bottom: 10px;
+  }
+
+  .field-card {
+    background-color: #2e2e4d;
+    padding: 10px;
+    margin-bottom: 15px;
+    border-radius: 12px;
+  }
+
+  .field-id {
+    font-size: 12px;
+    color: #ddd;
+    margin-bottom: 6px;
+    word-break: break-word;
+  }
+
+  .btn-fetch {
+    background-color: #3b7ded;
+    border: none;
+    color: white;
+  }
+
+  .btn-delete {
+    background-color: #e50914;
+    border: none;
+    color: white;
+  }
+</style>
+
+<div id="map-container">
+  <div id="map"></div>
+
+  <div id="field-sidebar">
+    <h5>My Fields</h5>
+    <!-- Cards will be appended dynamically -->
+  </div>
+</div>
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+
+<script>
+  const map = L.map("map").setView([30.9, 76.8], 8);
+  L.tileLayer("https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}", {
+    maxZoom: 20,
+    subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+    attribution: "Map by Google"
+  }).addTo(map);
+
+const fieldBoundsMap = {}; // Store field bounds by geoid
+
+async function loadGeoIDs() {
+  const res = await fetch("/api/geoids/");
+  const data = await res.json();
+  console.log(data)
+  for (const geoid of data.geoids) {
+    await loadFieldBoundary(geoid);
+  }
+}
+
+async function loadFieldBoundary(geoid) {
+  const res = await fetch(`/api/field-boundary/${geoid}/`);
+  const data = await res.json();
+  if (!data.geometry) return;
+
+  // Add geometry to main map
+  const geoLayer = L.geoJSON(data.geometry, {
+    style: { color: '#3399ff', weight: 2 }
+  }).addTo(map);
+
+  const bounds = geoLayer.getBounds();
+  fieldBoundsMap[geoid] = bounds; // Save for zooming
+
+  // Add to sidebar
+  const cardId = `mini-map-${geoid}`;
+  const sidebar = document.getElementById("field-sidebar");
+  const card = document.createElement("div");
+  card.className = "field-card";
+  card.innerHTML = `
+    <div id="${cardId}" class="leaflet-mini"></div>
+    <div class="field-id">${geoid}</div>
+    <div class="d-flex justify-content-between">
+      <button class="btn btn-fetch btn-sm" onclick="zoomTo('${geoid}')">Fetch Field</button>
+      <button class="btn btn-delete btn-sm" onclick="deleteField('${geoid}')">Delete</button>
+    </div>
+  `;
+  sidebar.appendChild(card);
+
+  const miniMap = L.map(cardId, {
+    attributionControl: false,
+    zoomControl: false,
+    dragging: false,
+    scrollWheelZoom: false
+  }).setView(bounds.getCenter(), 17);
+
+  L.tileLayer("https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}", {
+    maxZoom: 20,
+    subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+  }).addTo(miniMap);
+  L.geoJSON(data.geometry).addTo(miniMap);
+}
+
+function zoomTo(geoid) {
+  if (fieldBoundsMap[geoid]) {
+    map.fitBounds(fieldBoundsMap[geoid], { padding: [30, 30] });
+  } else {
+    alert("No bounds found for this field.");
+  }
+}
+
+function deleteField(geoid) {
+  alert("Delete field " + geoid);
+}
+
+  loadGeoIDs();
+</script>
+{% endblock %}
