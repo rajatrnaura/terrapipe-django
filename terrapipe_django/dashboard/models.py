@@ -216,3 +216,51 @@ class UserAuthorizationsAccess(models.Model):
         return f"{user_email} - {app_name} ({status})"
 
 
+class S2CellToken(models.Model):
+    id = models.AutoField(primary_key=True)
+    cell_token = models.TextField(unique=True)
+
+    def __str__(self):
+        return self.cell_token
+    
+    class Meta:
+        db_table = 's2_cell_tokens'
+        
+        
+class GeoIDs(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    geo_id = models.CharField(max_length=255, unique=True, null=True, blank=True)
+    geo_data = models.JSONField(null=True, blank=True)
+    authority_token = models.CharField(max_length=255, null=True, blank=True)
+    created_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(null=True, blank=True)
+    country = models.CharField(max_length=255, null=True, blank=True)
+    boundary_type = models.CharField(max_length=255, null=True, blank=True)
+
+    class Meta:
+        db_table = 'geo_ids'  # Ensures Django maps this model to the existing table
+        managed = False       # So Django won't try to create or alter this table
+        
+        
+class CellsGeoID(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    geo_id = models.ForeignKey(
+        'GeoIDs',
+        db_column='geo_id',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+    )
+
+    cell_id = models.ForeignKey(
+        'S2CellToken',
+        db_column='cell_id',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        db_table = 'cells_geo_ids'
+        managed = False  # Prevent Django from creating/dropping this table
