@@ -217,7 +217,7 @@ class UserAuthorizationsAccess(models.Model):
 
 
 class S2CellToken(models.Model):
-    id = models.AutoField(primary_key=True)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     cell_token = models.TextField(unique=True)
 
     def __str__(self):
@@ -230,7 +230,8 @@ class S2CellToken(models.Model):
 class GeoIDs(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     geo_id = models.CharField(max_length=255, unique=True, null=True, blank=True)
-    geo_data = models.JSONField(null=True, blank=True)
+    # geo_data = models.JSONField(null=True, blank=True)
+    geo_data = models.TextField(null=True,blank=True)
     authority_token = models.CharField(max_length=255, null=True, blank=True)
     created_at = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(null=True, blank=True)
@@ -264,3 +265,8 @@ class CellsGeoID(models.Model):
     class Meta:
         db_table = 'cells_geo_ids'
         managed = False  # Prevent Django from creating/dropping this table
+        
+        
+class CellsGeosMiddle(models.Model):
+    geo = models.ForeignKey(GeoIDs, on_delete=models.CASCADE, related_name='cell_links')
+    s2celltoken = models.ForeignKey(S2CellToken, on_delete=models.CASCADE, related_name='geo_links')

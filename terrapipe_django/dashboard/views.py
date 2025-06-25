@@ -20,6 +20,8 @@ from dotenv import load_dotenv
 import os
 from shapely.geometry import Point
 from django.http import JsonResponse, HttpResponseBadRequest
+from django.shortcuts import render
+
 
 load_dotenv()
 
@@ -274,3 +276,5 @@ def register_field_boundary(request):
 
 
 
+def map_view(request):
+    return render(request, "map.html")
