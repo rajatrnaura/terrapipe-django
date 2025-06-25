@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Draw and Manage Fields</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Leaflet + Plugins -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+
+  <style>
+    html, body, #map {
+      height: 100%;
+      margin: 0;
+    }
+
+    #form-container {
+      position: absolute;
+      top: 70px;
+      right: 10px;
+      background: #fff;
+      padding: 15px;
+      z-index: 1000;
+      display: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      border-radius: 10px;
+      width: 250px;
+    }
+
+    #form-container input, #form-container select {
+      width: 100%;
+      margin-bottom: 10px;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+
+    #form-container button {
+      width: 48%;
+      margin: 4px 1%;
+      padding: 8px;
+      border: none;
+      border-radius: 5px;
+      background: #28a745;
+      color: white;
+      cursor: pointer;
+    }
+
+    #form-container button:hover {
+      background: #218838;
+    }
+
+    #wkt-output {
+      font-size: 12px;
+      padding: 6px;
+      background: #f8f8f8;
+      border: 1px solid #ccc;
+      margin-top: 10px;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="form-container">
+  <h4>Field Info</h4>
+  <input type="text" id="fieldName" placeholder="Field Name (optional)">
+  <input type="text" id="s2_index" placeholder="S2 Index (optional)">
+  <select id="mode">
+    <option>Manual</option>
+    <option>Automated</option>
+  </select>
+  <div style="display:flex; justify-content:space-between;">
+    <button onclick="fetchField()">Fetch</button>
+    <button onclick="registerField()">Register</button>
+  </div>
+  <div id="wkt-output"></div>
+</div>
+
+<!-- Scripts -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+<script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+
+<script>
+  const map = L.map('map').setView([28.6139, 77.2090], 16); // New Delhi
+
+  // Satellite tiles (good for seeing fields)
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '&copy; Esri Imagery'
+  }).addTo(map);
+
+
+    L.Control.geocoder({
+    defaultMarkGeocode: false
+    })
+    .on('markgeocode', function(e) {
+    const bbox = e.geocode.bbox;
+    const bounds = L.latLngBounds(bbox);
+    map.fitBounds(bounds);
+    })
+    .addTo(map);
+
+
+  const drawnItems = new L.FeatureGroup();
+  map.addLayer(drawnItems);
+
+  const drawControl = new L.Control.Draw({
+    position: 'topleft',
+    draw: {
+      polygon: true,
+      rectangle: true,
+      circle: false,
+      polyline: false,
+      marker: false
+    },
+    edit: {
+      featureGroup: drawnItems
+    }
+  });
+  map.addControl(drawControl);
+
+  map.on('draw:created', function (e) {
+    const layer = e.layer;
+    drawnItems.addLayer(layer);
+
+    document.getElementById('form-container').style.display = 'block';
+
+    // WKT output (polygon only)
+    if (layer instanceof L.Polygon || layer instanceof L.Rectangle) {
+      const latlngs = layer.getLatLngs()[0];
+      const coords = latlngs.map(p => `${p.lng} ${p.lat}`).join(',') + `,${latlngs[0].lng} ${latlngs[0].lat}`;
+      const wkt = `POLYGON ((${coords}))`;
+      document.getElementById('wkt-output').innerText = `WKT:\n${wkt}`;
+    }
+  });
+
+  function fetchField() {
+    alert("You can implement field fetch using S2 index or field name.");
+    // Add your backend call here
+  }
+
+function registerField() {
+  const s2 = document.getElementById('s2_index').value;
+  const mode = document.getElementById('mode').value;
+  const wktText = document.getElementById('wkt-output').innerText.trim();
+  const wkt = wktText.replace(/^WKT:\s*/, '');
+
+  const payload = {
+    wkt: wkt,
+    s2_index: s2
+  };
+
+  const headers = {
+    'Content-Type': 'application/json'
+  };
+
+  if (mode === "Automated") {
+    headers["AUTOMATED-FIELD"] = "1";
+  }
+
+  fetch('/api/register-field-boundary/', {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify(payload)
+  })
+  .then(response => response.json().then(data => ({
+    ok: response.ok,
+    status: response.status,
+    body: data
+  })))
+  .then(({ ok, body }) => {
+    if (ok) {
+      alert("✅ Field registered successfully.\nGeoID: " + body["Geo Id"]);
+      console.log("Field Registered:", body);
+
+      // Draw GeoJSON polygon on map
+      const geoJson = body["Geo JSON"];
+      const layer = L.geoJSON(geoJson, {
+        style: {
+          color: '#28a745',
+          weight: 3,
+          opacity: 0.9,
+          fillOpacity: 0.4
+        }
+      }).addTo(drawnItems);
+
+      map.fitBounds(layer.getBounds());
+
+        layer.eachLayer(function (l) {
+        const center = l.getBounds().getCenter();
+        const popupContent = `
+            <div style="font-size: 14px;">
+            <strong>🆔 Geo ID:</strong><br>${body["Geo Id"]}<br><br>
+            <strong>✅ Status:</strong> ${body.message}
+            </div>
+        `;
+        l.bindPopup(popupContent).openPopup();
+        });
+
+
+    } else {
+      alert("⚠️ Field registration failed.\n" + (body.message || "Unknown error"));
+      console.warn("Failed:", body);
+    }
+  })
+  .catch(error => {
+    console.error("Error:", error);
+    alert("❌ Error occurred while registering field.");
+  });
+}
+
+
+</script>
+
+</body>
+</html>

@@ -171,7 +171,7 @@ class Utils:
             return wrs_gdf[wrs_gdf.contains(p)].reset_index(drop=True).CNTRY_NAME.iloc[0]
         except Exception as e:
             return ''
-        
+            
     @staticmethod
     def lookup_geo_ids(geo_id_to_lookup):
         """
@@ -180,13 +180,85 @@ class Utils:
         """
         record = GeoIDs.objects.filter(geo_id=geo_id_to_lookup).first()
         if record and record.geo_data:
-            try:
-                return json.loads(record.geo_data).get('wkt')
-            except (json.JSONDecodeError, TypeError):
-                return None
+            geo_data = record.geo_data
+
+            # If geo_data is a string, try parsing it as JSON
+            if isinstance(geo_data, str):
+                try:
+                    geo_data = json.loads(geo_data)
+                except (json.JSONDecodeError, TypeError):
+                    return None
+
+            # If it's a dict, return 'wkt' key safely
+            if isinstance(geo_data, dict):
+                return geo_data.get('wkt')
+
         return None
 
+
+    @staticmethod
+    def fetch_geo_ids_for_cell_tokens(s2_cell_tokens, domain, boundary_type=None):
+        """
+        Fetch the geo_ids that have at least one matching S2 cell token.
+        Optionally filter by domain and boundary_type.
+        """
+        geo_ids_qs = GeoIDs.objects.distinct().filter(cell_links__s2celltoken__cell_token__in=s2_cell_tokens)
+
+
+        if domain:
+            authority_token = Utils.get_authority_token_for_domain(domain)
+            if authority_token:
+                geo_ids_qs = geo_ids_qs.filter(authority_token=authority_token)
+            else:
+                return []
+
+        if boundary_type and boundary_type != "all":
+            geo_ids_qs = geo_ids_qs.filter(boundary_type=boundary_type)
+
+        return list(geo_ids_qs.values_list("geo_id", flat=True))
+    
         
+        
+    @staticmethod
+    def check_percentage_match(matched_geo_ids, s2_index__l13_list, resolution_level, threshold):
+        """
+        Return the Geo IDs which overlap for a certain threshold percentage.
+
+        :param matched_geo_ids: List of geo_id strings
+        :param s2_index__l13_list: List of s2 tokens for current field
+        :param resolution_level: The resolution level key to lookup from geo_data JSON
+        :param threshold: Percentage overlap threshold (float)
+        :return: List of geo_ids that exceed threshold
+        """
+        percentage_matched_geo_ids = []
+
+        from dashboard.models import GeoIDs  # Import here to avoid circular imports
+
+        geo_records = GeoIDs.objects.filter(geo_id__in=matched_geo_ids)
+
+        for record in geo_records:
+            geo_data = record.geo_data
+
+            if isinstance(geo_data, str):
+                geo_data = json.loads(geo_data)
+
+            cell_tokens = geo_data.get(str(resolution_level), [])
+
+            if not cell_tokens:
+                continue
+
+            intersection = set(s2_index__l13_list) & set(cell_tokens)
+            union = set(s2_index__l13_list) | set(cell_tokens)
+
+            if not union:
+                continue
+
+            percentage_match = (len(intersection) / float(len(union))) * 100
+
+            if percentage_match > threshold:
+                percentage_matched_geo_ids.append(record.geo_id)
+
+        return percentage_matched_geo_ids
     @staticmethod
     def records_s2_cell_tokens(s2_cell_tokens_dict: dict):
         """
@@ -268,29 +340,26 @@ class Utils:
             if domain:
                 authority_token = Utils.get_authority_token_for_domain(domain)
 
-            geo_id_record = GeoIDs(
-                geo_id=geo_id,
-                authority_token=authority_token,
-                country=country,
-                boundary_type=boundary_type
-            )
-            geo_id_record.save()
+            geo_id_record = GeoIDs.objects.filter(geo_id=geo_id).first()
+            if not geo_id_record:
+                geo_id_record = GeoIDs(
+                    geo_id=geo_id,
+                    authority_token=authority_token,
+                    country=country,
+                    boundary_type=boundary_type
+                )
+                geo_id_record.save()
 
             all_tokens = []
 
             for res_level, s2_cell_tokens_records in records_list_s2_cell_tokens_middle_table_dict.items():
-                geo_data[res_level] = indices[res_level]
+                geo_data[res_level] = indices[res_level]  # Make sure this is a list of strings or ints only
 
                 token_strs = [t.cell_token for t in s2_cell_tokens_records]
 
                 existing_qs = S2CellToken.objects.filter(cell_token__in=token_strs)
                 existing_map = {obj.cell_token: obj for obj in existing_qs}
-                new_tokens = []
-
-                for record in s2_cell_tokens_records:
-                    if record.cell_token not in existing_map:
-                        new_tokens.append(S2CellToken(cell_token=record.cell_token))  # ✅ Correct model instance
-
+                new_tokens = [record for record in s2_cell_tokens_records if record.cell_token not in existing_map]
 
                 if new_tokens:
                     S2CellToken.objects.bulk_create(new_tokens)
@@ -298,7 +367,7 @@ class Utils:
                 all_tokens.extend(existing_qs)
                 all_tokens.extend(new_tokens)
 
-            geo_id_record.geo_data = geo_data
+            geo_id_record.geo_data = json.dumps(geo_data) 
             geo_id_record.save()
 
             if all_tokens:
@@ -310,7 +379,7 @@ class Utils:
 
         except Exception as e:
             raise e
-        
+
         
     @staticmethod
     def get_specific_s2_index_geo_data(geo_data, s2_indexes_to_remove):
@@ -320,10 +389,14 @@ class Utils:
         :param s2_indexes_to_remove:
         :return:
         """
-        geo_data = json.loads(geo_data)
+        if isinstance(geo_data, str):
+            geo_data = json.loads(geo_data)
+
         for key in s2_indexes_to_remove:
-            del geo_data[str(key)]
+            geo_data.pop(str(key), None) 
+
         return geo_data
+
     
     @staticmethod
     def get_geo_json(field_wkt):
