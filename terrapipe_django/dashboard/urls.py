@@ -1,6 +1,6 @@
 # urls.py (add this to your URLs configuration)
 from django.urls import path
-from .views import get_user_geoids ,login,  get_user_geoids_with_details , products , products_page , login_page , map_view , get_geoids , get_field_boundary , logout_view
+from .views import get_user_geoids ,login,  get_user_geoids_with_details , products , products_page , login_page , map_view , get_geoids , get_field_boundary , logout_view , delete_field
 urlpatterns = [
     path('login/', login, name='login'),
     path('get-user-geoids/', get_user_geoids_with_details, name='get_user_geoids'),
@@ -10,5 +10,6 @@ urlpatterns = [
     path("map/", map_view, name="map_page"),
     path("geoids/", get_geoids, name="api_geoids"),
     path("field-boundary/<str:geoid>/", get_field_boundary, name="api_field_boundary"),
-    path('api/logout/', logout_view, name='logout_api')
+    path('logout/', logout_view, name='logout_api'),
+    path('delete-field/<str:field_id>/', delete_field, name='delete_field'),
 ]

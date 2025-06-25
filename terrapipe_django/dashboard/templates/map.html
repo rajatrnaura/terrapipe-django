@@ -11,13 +11,13 @@
 
   body {
     background: none !important;
-    background-color: #000 !important;
+    background-color: transparent !important;
   }
 
   #map-container {
     display: flex;
     position: absolute;
-    top: 60px; /* height of navbar */
+    top: 60px;
     left: 0;
     right: 0;
     bottom: 0;
@@ -28,57 +28,164 @@
     flex-grow: 1;
     height: 100%;
     width: 100%;
+    z-index: 1;
   }
 
   #field-sidebar {
-    width: 360px;
-    background-color: #1a1a2e;
-    color: white;
+    width: 370px;
+    background-color: white;
+    color: black;
     overflow-y: auto;
     padding: 15px;
     font-family: 'Segoe UI', sans-serif;
-    border-left: 1px solid #111;
+    border-left: 1px solid #ccc;
+    z-index: 2;
+    transition: all 0.3s ease-in-out;
+  }
+
+  #field-sidebar.collapsed {
+    display: none;
+  }
+
+  #toggle-sidebar {
+    font-size: 18px;
+    width: auto;
+    height: auto;
+    padding: 0 6px;
+    line-height: 1;
+    background: none;
+    color: #333;
+    border: none;
+    box-shadow: none;
+    margin-right: 5px;
+    transition: all 0.3s ease;
+  }
+
+  #toggle-sidebar.floating {
+    position: absolute;
+    top: 75px;
+    right: 15px;
+    z-index: 9999;
+    width: 35px;
+    height: 35px;
+    line-height: 33px;
+    background-color: white;
+    border-radius: 50%;
+    font-size: 18px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    border: 1px solid #ccc;
+    text-align: center;
   }
 
   .leaflet-mini {
-    height: 140px;
-    border-radius: 10px;
-    margin-bottom: 10px;
+    height: 130px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    overflow: hidden;
   }
 
   .field-card {
-    background-color: #2e2e4d;
+    background-color: #f9f9f9;
     padding: 10px;
-    margin-bottom: 15px;
+    margin-bottom: 20px;
     border-radius: 12px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    transition: transform 0.2s;
+  }
+
+  .field-card:hover {
+    transform: scale(1.01);
   }
 
   .field-id {
-    font-size: 12px;
-    color: #ddd;
-    margin-bottom: 6px;
+    font-size: 13px;
+    color: #333;
+    margin-bottom: 4px;
     word-break: break-word;
   }
 
   .btn-fetch {
-    background-color: #3b7ded;
+    background-color: #0047AB;
     border: none;
     color: white;
+    padding: 6px 12px;
+    font-size: 15px;
+    border-radius: 12px;
   }
 
   .btn-delete {
-    background-color: #e50914;
+    background-color: #dc3545;
     border: none;
     color: white;
+    padding: 6px 12px;
+    font-size: 15px;
+    border-radius: 12px;
   }
+
+  .search-overlay {
+    position: absolute;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    width: 450px;
+  }
+
+  .search-overlay .input-group {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  }
+
+  .search-overlay input {
+    border-radius: 20px;
+    font-size: 14px;
+    height: 40px;
+    padding: 0 15px;
+    border: 1px solid #ccc;
+  }
+
+  .leaflet-control-attribution {
+    background: rgba(255, 255, 255, 0.8);
+    font-size: 10px;
+    padding: 2px 4px;
+  }
+
+  #delete-alert {
+    display: none;
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    z-index: 9999;
+    background: #d4edda;
+    color: #155724;
+    padding: 18px 28px;
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    font-size: 18px;
+    font-weight: bold;
+    max-width: 400px;
+    line-height: 1.5;
+  }
+
 </style>
 
 <div id="map-container">
   <div id="map"></div>
 
   <div id="field-sidebar">
-    <h5>My Fields</h5>
-    <!-- Cards will be appended dynamically -->
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <button id="toggle-sidebar" class="btn"><i class="fa-solid fa-right-long"></i></button>
+      <h5 class="mb-3 fw-bold" style="flex-grow: 1; text-align: center;">My Fields</h5>
+    </div>
+  </div>
+</div>
+
+<!-- Alert for delete -->
+<div id="delete-alert"></div>
+
+<!-- Search Bar -->
+<div class="search-overlay">
+  <div class="input-group">
+    <input id="searchGeoID" type="text" class="form-control" placeholder="Search GeoID..." />
   </div>
 </div>
 
@@ -94,70 +201,184 @@
     attribution: "Map by Google"
   }).addTo(map);
 
-const fieldBoundsMap = {}; // Store field bounds by geoid
+  const fieldBoundsMap = {};
+  const fieldLayers = {};
+  let activeHighlightLayer = null;
 
-async function loadGeoIDs() {
-  const res = await fetch("/api/geoids/");
-  const data = await res.json();
-  console.log(data)
-  for (const geoid of data.geoids) {
-    await loadFieldBoundary(geoid);
+  async function loadGeoIDs() {
+    const res = await fetch("/api/geoids/");
+    const data = await res.json();
+    for (const geoid of data.geoids) {
+      await loadFieldBoundary(geoid, true);
+    }
   }
-}
 
-async function loadFieldBoundary(geoid) {
-  const res = await fetch(`/api/field-boundary/${geoid}/`);
-  const data = await res.json();
-  if (!data.geometry) return;
+  async function loadFieldBoundary(geoid, addToSidebar = false, shouldZoom = false) {
+    const res = await fetch(`/api/field-boundary/${geoid}/`);
+    const data = await res.json();
+    if (!data.raw_geojson || !data.raw_geojson.geometry) return;
 
-  // Add geometry to main map
-  const geoLayer = L.geoJSON(data.geometry, {
-    style: { color: '#3399ff', weight: 2 }
-  }).addTo(map);
+    const userFieldId = data.user_field_id;
+    const geoLayer = L.geoJSON(data.raw_geojson, {
+      style: { color: '#00ff99', weight: 2 }
+    }).addTo(map);
 
-  const bounds = geoLayer.getBounds();
-  fieldBoundsMap[geoid] = bounds; // Save for zooming
+    fieldLayers[geoid] = geoLayer;
+    const bounds = geoLayer.getBounds();
+    fieldBoundsMap[geoid] = bounds;
 
-  // Add to sidebar
-  const cardId = `mini-map-${geoid}`;
-  const sidebar = document.getElementById("field-sidebar");
-  const card = document.createElement("div");
-  card.className = "field-card";
-  card.innerHTML = `
-    <div id="${cardId}" class="leaflet-mini"></div>
-    <div class="field-id">${geoid}</div>
-    <div class="d-flex justify-content-between">
-      <button class="btn btn-fetch btn-sm" onclick="zoomTo('${geoid}')">Fetch Field</button>
-      <button class="btn btn-delete btn-sm" onclick="deleteField('${geoid}')">Delete</button>
-    </div>
-  `;
-  sidebar.appendChild(card);
+    if (shouldZoom) {
+      map.fitBounds(bounds, { padding: [30, 30] });
+    }
 
-  const miniMap = L.map(cardId, {
-    attributionControl: false,
-    zoomControl: false,
-    dragging: false,
-    scrollWheelZoom: false
-  }).setView(bounds.getCenter(), 17);
+    if (!addToSidebar) return;
 
-  L.tileLayer("https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}", {
-    maxZoom: 20,
-    subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
-  }).addTo(miniMap);
-  L.geoJSON(data.geometry).addTo(miniMap);
-}
+    const cardId = `mini-map-${geoid}`;
+    const sidebar = document.getElementById("field-sidebar");
+    if (document.getElementById(cardId)) return;
 
-function zoomTo(geoid) {
-  if (fieldBoundsMap[geoid]) {
-    map.fitBounds(fieldBoundsMap[geoid], { padding: [30, 30] });
-  } else {
-    alert("No bounds found for this field.");
+    const card = document.createElement("div");
+    card.className = "field-card";
+    card.innerHTML = `
+      <div id="${cardId}" class="leaflet-mini mb-2"></div>
+      <div class="field-id fw-bold">${data.field_name || geoid}</div>
+      <div class="field-id text-muted">${geoid}</div>
+      <div class="d-flex justify-content-between mt-2">
+        <button class="btn btn-fetch btn-sm" onclick="zoomTo('${geoid}')">Fetch Field</button>
+        <button class="btn btn-delete btn-sm" onclick="deleteField('${userFieldId}', '${geoid}')">Delete</button>
+      </div>
+    `;
+    sidebar.appendChild(card);
+
+    const miniMap = L.map(cardId, {
+      attributionControl: false,
+      zoomControl: false,
+      dragging: false,
+      scrollWheelZoom: false
+    });
+
+    L.tileLayer("https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}", {
+      maxZoom: 20,
+      subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+    }).addTo(miniMap);
+
+    const miniGeoLayer = L.geoJSON(data.raw_geojson).addTo(miniMap);
+    miniMap.fitBounds(miniGeoLayer.getBounds(), {
+      padding: [5, 5],
+      maxZoom: 18
+    });
   }
-}
 
-function deleteField(geoid) {
-  alert("Delete field " + geoid);
-}
+  function zoomTo(geoid) {
+    if (fieldBoundsMap[geoid]) {
+      map.fitBounds(fieldBoundsMap[geoid], { padding: [30, 30] });
+
+      if (activeHighlightLayer) {
+        map.removeLayer(activeHighlightLayer);
+        activeHighlightLayer = null;
+      }
+
+      const fieldLayer = fieldLayers[geoid];
+      if (fieldLayer) {
+        const geojson = fieldLayer.toGeoJSON();
+        activeHighlightLayer = L.geoJSON(geojson, {
+          style: { color: 'yellow', weight: 5, dashArray: '6,4' }
+        }).addTo(map);
+        activeHighlightLayer.bringToFront();
+      }
+    } else {
+      alert("No bounds found for this field.");
+    }
+  }
+
+  async function deleteField(userFieldId, geoid) {
+    if (!confirm("Are you sure you want to delete this field?")) return;
+
+    try {
+      const res = await fetch(`/api/delete-field/${userFieldId}/`, {
+        method: 'DELETE',
+      });
+
+      const result = await res.json();
+      console.log("DELETE result:", result);
+
+      if (result.success) {
+        if (fieldLayers[geoid]) {
+          map.removeLayer(fieldLayers[geoid]);
+          delete fieldLayers[geoid];
+        }
+
+        const card = document.getElementById(`mini-map-${geoid}`);
+        if (card) card.closest(".field-card").remove();
+
+        const alertBox = document.getElementById("delete-alert");
+        alertBox.textContent = result.message || "Field deleted successfully.";
+        alertBox.style.display = "block";
+
+        setTimeout(() => {
+          alertBox.style.display = "none";
+        }, 3000);
+      } else {
+        alert(result.message || "Failed to delete field.");
+      }
+    } catch (err) {
+      console.error("Delete error:", err);
+      alert("An error occurred while deleting the field. Check console for details.");
+    }
+  }
+
+  async function searchGeoID() {
+    const geoid = document.getElementById("searchGeoID").value.trim();
+    if (!geoid) return alert("Please enter a GeoID");
+
+    if (fieldLayers["__search"]) {
+      map.removeLayer(fieldLayers["__search"]);
+    }
+
+    const res = await fetch(`/api/field-boundary/${geoid}/`);
+    const data = await res.json();
+
+    if (!data.raw_geojson || !data.raw_geojson.geometry) {
+      alert("Field not found.");
+      return;
+    }
+
+    const searchLayer = L.geoJSON(data.raw_geojson, {
+      style: { color: '#33ffcc', weight: 3 }
+    }).addTo(map);
+
+    const bounds = searchLayer.getBounds();
+    map.fitBounds(bounds, { padding: [30, 30] });
+
+    fieldLayers["__search"] = searchLayer;
+  }
+
+  document.getElementById("searchGeoID").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      searchGeoID();
+    }
+  });
+
+  document.getElementById("toggle-sidebar").addEventListener("click", function () {
+    const sidebar = document.getElementById("field-sidebar");
+    const toggleBtn = document.getElementById("toggle-sidebar");
+
+    const isCollapsed = sidebar.classList.toggle("collapsed");
+    toggleBtn.innerHTML = isCollapsed ? '<i class="fa-solid fa-left-long"></i>' : '<i class="fa-solid fa-right-long"></i>';
+
+    if (isCollapsed) {
+      toggleBtn.classList.add("floating");
+      document.body.appendChild(toggleBtn);
+    } else {
+      toggleBtn.classList.remove("floating");
+      const headerDiv = document.querySelector("#field-sidebar > div");
+      headerDiv.insertBefore(toggleBtn, headerDiv.firstChild);
+    }
+
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 300);
+  });
 
   loadGeoIDs();
 </script>

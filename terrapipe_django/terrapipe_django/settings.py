@@ -72,6 +72,7 @@ TEMPLATES = [
 JWT_SECRET_KEY = 'tFV0kGlq0r48ZS-0IUFxIh1VHvh62qsSP6ZsgahTBPk'
 WSGI_APPLICATION = 'terrapipe_django.wsgi.application'
 AUTH_USER_MODEL = 'dashboard.User'
+TP_SECRET_KEY = '4h%ji1srx2lx7gahi@=z5*len0-7nf*(h1$3uj$pdeh3^0i=-3'
 
 
 # Database
