@@ -432,8 +432,8 @@ def products_page(request):
 #     }
 # }
 
-def map_view(request):
-    return render(request, "map.html")
+def asset_map_view(request):
+    return render(request, "asset_map.html")
 
 
 def get_user_registry_id_from_session(request):
@@ -658,3 +658,116 @@ def delete_field(request, field_id):
 
     except requests.RequestException as e:
         return JsonResponse({"success": False, "message": f"Error calling Flask API: {e}"}, status=500)
+    
+
+def scope_map(request):
+    return render(request , 'scope_map.html')
+
+
+# def get_user_scope(request):
+#     # Dynamic logic here
+#     return JsonResponse({
+#         "offer": {"name": "Basic", "scopes_limit": "Limits.MANY"},
+#         "scopes": ["10SGF", "43RFQ", "55HCV", "17TNG"]
+#     })
+
+def get_user_scope(request):
+    try:
+        access_token = request.session.get('access_token')
+        if not access_token:
+            return JsonResponse({'message': 'User not authenticated'}, status=401)
+
+        flask_url = "https://api.terrapipe.io/get_user_scope"
+        headers = {
+            "Authorization": f"Bearer {access_token}"
+        }
+
+        response = requests.get(flask_url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            return JsonResponse(response.json(), status=200)
+        else:
+            return JsonResponse({
+                'message': 'Failed to fetch user scope',
+                'error': response.json().get("message", "Unknown error")
+            }, status=response.status_code)
+
+    except Exception as e:
+        return JsonResponse({
+            'message': 'Error while fetching user scope',
+            'error': str(e)
+        }, status=500)
+
+# def get_coordinates(request, scope):
+#     # Dynamic logic here (replace with actual data source, e.g., database)
+#     # For now, using a hardcoded response based on the scope
+#     coordinates_data = {
+#         "55HCV": {
+#             "geometry": {
+#                 "coordinates": [
+#                     [
+#                         [144.7776187766, -36.1237354739],
+#                         [145.9974355717, -36.1401611357],
+#                         [145.9845293538, -37.1298524425],
+#                         [144.7490329004, -37.1128273042],
+#                         [144.7776187766, -36.1237354739]
+#                     ]
+#                 ],
+#                 "type": "Polygon"
+#             },
+#             "scope": "55HCV"
+#         },
+#         "43RFQ": {
+#             "geometry": {
+#                 "coordinates": [
+#                     [
+#                         [37.7749, -122.4194],  # Example coordinates for San Francisco
+#                         [37.7849, -122.4094],
+#                         [37.7749, -122.3994],
+#                         [37.7649, -122.4094],
+#                         [37.7749, -122.4194]
+#                     ]
+#                 ],
+#                 "type": "Polygon"
+#             },
+#             "scope": "43RFQ"
+#         },
+#     }
+
+#     if scope in coordinates_data:
+#         return JsonResponse(coordinates_data[scope])
+#     else:
+#         return JsonResponse({"error": "Scope not found"}, status=404)
+
+
+@csrf_exempt
+def get_coordinates(request, scope):
+    try:
+        access_token = request.session.get('access_token')
+        if not access_token:
+            return JsonResponse({'message': 'User not authenticated'}, status=401)
+
+        flask_url = "https://api.terrapipe.io/get-coordinates"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "scope": scope
+        }
+
+        response = requests.post(flask_url, headers=headers, json=payload, timeout=10)
+        if response.status_code == 200:
+            print(f"response : {response.json()}")
+            return JsonResponse(response.json(), status=200)
+        else:
+            return JsonResponse({
+                'message': 'Failed to fetch coordinates',
+                'error': response.json().get("message", "Unknown error")
+            }, status=response.status_code)
+
+    except Exception as e:
+        return JsonResponse({
+            'message': 'Error while fetching coordinates',
+            'error': str(e)
+        }, status=500)
