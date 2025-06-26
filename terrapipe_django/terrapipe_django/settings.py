@@ -51,6 +51,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+TP_SECRET_KEY = '4h%ji1srx2lx7gahi@=z5*len0-7nf*(h1$3uj$pdeh3^0i=-3' 
 ROOT_URLCONF = 'terrapipe_django.urls'
 
 BASE_DIR = '/home/dell/terrapipe-django/terrapipe_django/'

@@ -4,68 +4,57 @@
   <meta charset="utf-8" />
   <title>Draw and Manage Fields</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <!-- Leaflet + Plugins -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
-
   <style>
-    html, body, #map {
-      height: 100%;
-      margin: 0;
-    }
-
+    html, body, #map { height: 100%; margin: 0; }
     #form-container {
-      position: absolute;
-      top: 70px;
-      right: 10px;
-      background: #fff;
-      padding: 15px;
-      z-index: 1000;
-      display: none;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-      border-radius: 10px;
-      width: 250px;
+      position: absolute; top: 70px; right: 10px; background: #fff; padding: 15px; z-index: 1000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2); border-radius: 10px; width: 250px;
     }
-
-    #form-container input, #form-container select {
-      width: 100%;
-      margin-bottom: 10px;
-      padding: 8px;
-      border: 1px solid #ccc;
-      border-radius: 5px;
+    #form-container input, #form-container select, #form-container textarea {
+      width: 100%; margin-bottom: 10px; padding: 8px; border: 1px solid #ccc; border-radius: 5px;
     }
-
     #form-container button {
-      width: 48%;
-      margin: 4px 1%;
-      padding: 8px;
-      border: none;
-      border-radius: 5px;
-      background: #28a745;
-      color: white;
-      cursor: pointer;
+      width: 48%; margin: 4px 1%; padding: 8px; border: none; border-radius: 5px;
+      background: #28a745; color: white; cursor: pointer;
     }
-
-    #form-container button:hover {
-      background: #218838;
-    }
-
+    #form-container button:hover { background: #218838; }
     #wkt-output {
-      font-size: 12px;
-      padding: 6px;
-      background: #f8f8f8;
-      border: 1px solid #ccc;
-      margin-top: 10px;
-      word-break: break-word;
-      white-space: pre-wrap;
+      font-size: 12px; padding: 6px; background: #f8f8f8; border: 1px solid #ccc;
+      margin-top: 10px; word-break: break-word; white-space: pre-wrap;
+    }
+    #response-card {
+      position: absolute; top: 8px; left: 58px; background: #fff; padding: 15px; z-index: 1000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2); border-radius: 10px; width: 250px;
+      height: 550px; font-size: 14px; overflow: auto; white-space: nowrap;
+    }
+    .json-tree ul { list-style-type: none; padding-left: 20px; }
+    .json-tree li { margin: 2px 0; font-family: monospace; }
+    .json-key { font-weight: bold; color: #3c3c3c; }
+    .json-value { color: #007bff; }
+    .json-collapsible { cursor: pointer; user-select: none; }
+    .json-collapsible::before { content: '▸ '; }
+    .json-collapsible.open::before { content: '▾ '; }
+    #loader {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.5); z-index: 2000; justify-content: center; align-items: center;
+    }
+    .spinner {
+      border: 4px solid rgba(255, 255, 255, 0.3); border-top: 4px solid #28a745;
+      border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
     }
   </style>
 </head>
 <body>
 
 <div id="map"></div>
+<div id="loader"><div class="spinner"></div></div>
 
 <div id="form-container">
   <h4>Field Info</h4>
@@ -75,148 +64,182 @@
     <option>Manual</option>
     <option>Automated</option>
   </select>
+
+  <!-- Manual WKT Input -->
+  <textarea id="manual-wkt" placeholder="Paste WKT here (optional)" rows="4"></textarea>
+
   <div style="display:flex; justify-content:space-between;">
     <button onclick="fetchField()">Fetch</button>
     <button onclick="registerField()">Register</button>
   </div>
+
   <div id="wkt-output"></div>
 </div>
 
-<!-- Scripts -->
+<div id="response-card" style="display:none">
+  <h4>API Response</h4>
+  <div id="response-geo-id"></div>
+  <div id="response-geo-json" class="json-tree"></div>
+  <p id="response-status"></p>
+  <div id="response-s2-tokens"></div>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
 <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
 
 <script>
-  const map = L.map('map').setView([28.6139, 77.2090], 16); // New Delhi
+const map = L.map('map').setView([28.6139, 77.2090], 16);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  attribution: '© Esri Imagery'
+}).addTo(map);
 
-  // Satellite tiles (good for seeing fields)
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution: '&copy; Esri Imagery'
-  }).addTo(map);
+const drawnItems = new L.FeatureGroup();
+map.addLayer(drawnItems);
 
+const drawControl = new L.Control.Draw({
+  position: 'topleft',
+  draw: {
+    polygon: true,
+    rectangle: true,
+    circle: false,
+    polyline: false,
+    marker: false
+  },
+  edit: { featureGroup: drawnItems }
+});
+map.addControl(drawControl);
 
-    L.Control.geocoder({
-    defaultMarkGeocode: false
-    })
-    .on('markgeocode', function(e) {
-    const bbox = e.geocode.bbox;
-    const bounds = L.latLngBounds(bbox);
-    map.fitBounds(bounds);
-    })
-    .addTo(map);
+L.Control.geocoder({ defaultMarkGeocode: false })
+  .on('markgeocode', function(e) {
+    map.fitBounds(e.geocode.bbox);
+  })
+  .addTo(map);
 
-
-  const drawnItems = new L.FeatureGroup();
-  map.addLayer(drawnItems);
-
-  const drawControl = new L.Control.Draw({
-    position: 'topleft',
-    draw: {
-      polygon: true,
-      rectangle: true,
-      circle: false,
-      polyline: false,
-      marker: false
-    },
-    edit: {
-      featureGroup: drawnItems
-    }
-  });
-  map.addControl(drawControl);
-
-  map.on('draw:created', function (e) {
-    const layer = e.layer;
-    drawnItems.addLayer(layer);
-
-    document.getElementById('form-container').style.display = 'block';
-
-    // WKT output (polygon only)
-    if (layer instanceof L.Polygon || layer instanceof L.Rectangle) {
-      const latlngs = layer.getLatLngs()[0];
-      const coords = latlngs.map(p => `${p.lng} ${p.lat}`).join(',') + `,${latlngs[0].lng} ${latlngs[0].lat}`;
-      const wkt = `POLYGON ((${coords}))`;
-      document.getElementById('wkt-output').innerText = `WKT:\n${wkt}`;
-    }
-  });
-
-  function fetchField() {
-    alert("You can implement field fetch using S2 index or field name.");
-    // Add your backend call here
+// Restore last polygon if available
+const lastGeoJson = localStorage.getItem('lastGeoJson');
+if (lastGeoJson) {
+  try {
+    const geoLayer = L.geoJSON(JSON.parse(lastGeoJson), {
+      style: { color: '#ffa500', weight: 3, opacity: 0.9, fillOpacity: 0.4 }
+    }).addTo(drawnItems);
+    map.fitBounds(geoLayer.getBounds());
+  } catch (e) {
+    console.warn('Invalid GeoJSON in localStorage');
   }
+}
+
+map.on('draw:created', function (e) {
+  const layer = e.layer;
+  drawnItems.addLayer(layer);
+  if (layer instanceof L.Polygon || layer instanceof L.Rectangle) {
+    const latlngs = layer.getLatLngs()[0];
+    const coords = latlngs.map(p => `${p.lng} ${p.lat}`).join(',') + `,${latlngs[0].lng} ${latlngs[0].lat}`;
+    const wkt = `POLYGON ((${coords}))`;
+    document.getElementById('wkt-output').innerText = `WKT:\n${wkt}`;
+  }
+});
+
+function fetchField() {
+  alert("You can implement field fetch using S2 index or field name.");
+}
+
+function renderJSONTree(data, parent) {
+  const ul = document.createElement('ul');
+  for (const key in data) {
+    const li = document.createElement('li');
+    if (typeof data[key] === 'object' && data[key] !== null) {
+      const span = document.createElement('span');
+      span.className = 'json-key json-collapsible open';
+      span.textContent = key + ': ';
+      const nested = document.createElement('div');
+      nested.style.display = 'block';
+      span.addEventListener('click', () => {
+        const isOpen = span.classList.toggle('open');
+        nested.style.display = isOpen ? 'block' : 'none';
+      });
+      renderJSONTree(data[key], nested);
+      li.appendChild(span);
+      li.appendChild(nested);
+    } else {
+      li.innerHTML = `<span class="json-key">${key}:</span> <span class="json-value">${data[key]}</span>`;
+    }
+    ul.appendChild(li);
+  }
+  parent.appendChild(ul);
+}
 
 function registerField() {
-  const s2 = document.getElementById('s2_index').value;
-  const mode = document.getElementById('mode').value;
-  const wktText = document.getElementById('wkt-output').innerText.trim();
-  const wkt = wktText.replace(/^WKT:\s*/, '');
+  const loader = document.getElementById('loader');
+  loader.style.display = 'flex';
+
+  const s2 = document.getElementById('s2_index').value || "8,13";
+  const manualInput = document.getElementById('manual-wkt').value.trim();
+  let wkt = manualInput || document.getElementById('wkt-output').innerText.replace(/^WKT:\s*/, '').trim();
 
   const payload = {
     wkt: wkt,
-    s2_index: s2
+    threshold: 90,
+    s2_index: s2,
+    resolution_level: 13
   };
-
-  const headers = {
-    'Content-Type': 'application/json'
-  };
-
-  if (mode === "Automated") {
-    headers["AUTOMATED-FIELD"] = "1";
-  }
 
   fetch('/api/register-field-boundary/', {
     method: 'POST',
-    headers: headers,
+    headers: {
+  'Content-Type': 'application/json',
+  'Authorization': 'Bearer ' + localStorage.getItem('access_token')
+  },
     body: JSON.stringify(payload)
   })
-  .then(response => response.json().then(data => ({
-    ok: response.ok,
-    status: response.status,
-    body: data
-  })))
+  .then(response => response.json().then(data => ({ ok: response.ok, body: data })))
   .then(({ ok, body }) => {
+    loader.style.display = 'none';
+    const responseCard = document.getElementById('response-card');
+    responseCard.style.display = 'block';
+
     if (ok) {
-      alert("✅ Field registered successfully.\nGeoID: " + body["Geo Id"]);
-      console.log("Field Registered:", body);
+      localStorage.setItem('lastGeoJson', JSON.stringify(body["Geo JSON"]));
 
-      // Draw GeoJSON polygon on map
-      const geoJson = body["Geo JSON"];
-      const layer = L.geoJSON(geoJson, {
-        style: {
-          color: '#28a745',
-          weight: 3,
-          opacity: 0.9,
-          fillOpacity: 0.4
+      document.getElementById('response-geo-id').innerText = `Geo Id: ${body["Geo Id"]}`;
+      const geoJsonContainer = document.getElementById('response-geo-json');
+      geoJsonContainer.innerHTML = '';
+      renderJSONTree(body["Geo JSON"], geoJsonContainer);
+      document.getElementById('response-status').innerText = `Status: ${body.message}`;
+
+      const s2Tokens = body["S2 Cell Tokens"];
+      let s2TokensHtml = 'S2 Cell Tokens: {';
+      if (s2Tokens && typeof s2Tokens === 'object') {
+        for (const [level, values] of Object.entries(s2Tokens)) {
+          s2TokensHtml += `<div class="nested">${level}: ${Array.isArray(values) ? '[' + values.join(', ') + ']' : values}</div>`;
         }
+      } else {
+        s2TokensHtml += '<div class="nested">None</div>';
+      }
+      s2TokensHtml += '}';
+      document.getElementById('response-s2-tokens').innerHTML = s2TokensHtml;
+
+      const layer = L.geoJSON(body["Geo JSON"], {
+        style: { color: '#28a745', weight: 3, opacity: 0.9, fillOpacity: 0.4 }
       }).addTo(drawnItems);
-
       map.fitBounds(layer.getBounds());
-
-        layer.eachLayer(function (l) {
-        const center = l.getBounds().getCenter();
-        const popupContent = `
-            <div style="font-size: 14px;">
-            <strong>🆔 Geo ID:</strong><br>${body["Geo Id"]}<br><br>
-            <strong>✅ Status:</strong> ${body.message}
-            </div>
-        `;
-        l.bindPopup(popupContent).openPopup();
-        });
-
-
     } else {
-      alert("⚠️ Field registration failed.\n" + (body.message || "Unknown error"));
-      console.warn("Failed:", body);
+      document.getElementById('response-geo-id').innerText = '';
+      document.getElementById('response-geo-json').innerText = '';
+      document.getElementById('response-status').innerText = `Status: ${body.message || 'Unknown error'}`;
+      document.getElementById('response-s2-tokens').innerText = '';
     }
   })
   .catch(error => {
+    loader.style.display = 'none';
+    document.getElementById('response-card').style.display = 'block';
+    document.getElementById('response-geo-id').innerText = '';
+    document.getElementById('response-geo-json').innerText = '';
+    document.getElementById('response-status').innerText = 'Status: Error occurred while registering field.';
+    document.getElementById('response-s2-tokens').innerText = '';
     console.error("Error:", error);
-    alert("❌ Error occurred while registering field.");
   });
 }
-
-
 </script>
-
 </body>
 </html>
