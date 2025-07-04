@@ -39,6 +39,7 @@
 
   .scope-entry {
     margin-bottom: 20px;
+    cursor: pointer;
   }
 
   .scope-map {
@@ -59,41 +60,80 @@
 
   .top-search {
     position: fixed;
-    top: 70px;
+    top: 65px;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 1001;
-    background: rgba(255, 255, 255, 0.95);
-    border-radius: 8px;
-    padding: 8px;
+    z-index: 1100;
     display: flex;
-    gap: 5px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    flex-direction: column;
+    align-items: flex-start; /* LEFT-align child inputs */
+    gap: 8px;
+    background: none;
+    padding: 0;
+    box-shadow: none;
+    border-radius: 0;
   }
 
   .search-input {
     border: 1px solid #ccc;
     border-radius: 8px;
-    padding: 6px 12px;
+    padding: 10px 14px;
     font-size: 14px;
-    width: 200px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    width: 350px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
   }
+
+
+  .search-geoid {
+    width: 350px;
+    padding: 10px 14px;
+    font-size: 14px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    background: white;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  }
+
+  .search-address {
+    width: 250px; /* smaller */
+    margin-left: 45px; /* slight right indent */
+    padding: 8px 12px;
+    font-size: 14px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    background: white;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  }
+
+  .search-geoid:focus,
+  .search-address:focus {
+    outline: none;
+    border-color: #007bff;
+  }
+
+  .search-input:focus {
+    border-color: #007bff;
+  }
+  
+  /* .address-wrapper {
+  position: relative;
+  width: 250px;
+  margin-left: 45px;
+  } */
 
   .suggestions-box {
     position: absolute;
-    top: 65px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 415px;
+    top: 100%; /* directly below the input */
+    left: 0;
+    width: 100%;
     background: white;
-    border: 1px solid #ddd;
-    border-radius: 5px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
     z-index: 2000;
     max-height: 200px;
     overflow-y: auto;
     font-size: 14px;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
     display: none;
   }
 
@@ -115,6 +155,85 @@
     left: 10px !important;
     z-index: 1001;
   }
+
+  /* Alert card styles for notifications */
+  #alert-container {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    z-index: 2000;
+    width: 300px;
+  }
+
+  .alert-card {
+    background: #dc3545;
+    color: white;
+    padding: 15px;
+    margin-bottom: 10px;
+    border-radius: 5px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    position: relative;
+    font-size: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .alert-card.success {
+    background: #28a745;
+  }
+
+  .alert-card .close-btn {
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    color: white;
+    background: none;
+    border: none;
+    padding: 0 5px;
+  }
+
+  /* Loading overlay */
+  #loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 3000;
+    display: none;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .spinner {
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-top: 4px solid #fff;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+  /* Popup button styles */
+  .popup-button {
+    background: transparent;
+    border: none;
+    color: #2196f3;
+    cursor: pointer;
+    padding: 5px;
+  }
+
+  .popup-button:disabled {
+    color: #aaa;
+    cursor: not-allowed;
+  }
 </style>
 
 <div id="main-container">
@@ -126,37 +245,280 @@
 </div>
 
 <div class="top-search">
-  <input type="text" id="geoidSearch" class="search-input" placeholder="Search GeoID..." />
-  <input type="text" id="addressSearch" class="search-input" placeholder="Enter address..." autocomplete="off" />
-  <div id="address-suggestions" class="suggestions-box"></div>
+  <input type="text" id="geoidSearch" class="search-geoid" placeholder="Search GeoID..." />
+  
+  <!-- Wrap address input and suggestions box together -->
+  <div class="address-wrapper">
+    <input type="text" id="addressSearch" class="search-address" placeholder="Enter address..." autocomplete="off" />
+    <div id="address-suggestions" class="suggestions-box"></div>
+  </div>
 </div>
+
+
+<div id="loading-overlay">
+  <div class="spinner"></div>
+</div>
+
+<div id="alert-container"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
 <script>
+  // Initialize map and state variables
   const map = L.map('map').setView([30.7333, 76.7794], 8);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
     attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors'
   }).addTo(map);
 
-  $.get('/api/get_user_scope/', function(data) {
-    const scopes = data.scopes;
-    const scopesDiv = $('#scopes');
+  // State variables
+  let scopesFetched = false;
+  let fieldsFetched = false;
+  let scopeStatus = [];
+  let scopeLimit = 'many';
+  let currentBounds = null;
+  let isLoading = false;
+  let scopeLayerGroup = L.layerGroup().addTo(map);
+  let fieldLayerGroup = L.layerGroup().addTo(map);
+  let geojsonLayer = null;
+  const scopeGeometries = new Map();
 
-    scopes.forEach(function(scope) {
+  function showLoading() {
+    isLoading = true;
+    $('#loading-overlay').show();
+  }
+
+  // Hide loading overlay
+  function hideLoading() {
+    isLoading = false;
+    $('#loading-overlay').hide();
+  }
+
+  // Show alert card
+  function showAlert(message, isSuccess = false) {
+    const alert = $('<div>').addClass('alert-card').text(message);
+    if (isSuccess) alert.addClass('success');
+    const closeBtn = $('<button>').addClass('close-btn').text('×').click(() => alert.remove());
+    alert.append(closeBtn);
+    $('#alert-container').append(alert);
+    setTimeout(() => alert.fadeOut(() => alert.remove()), 5000);
+  }
+
+  // Fetch user scope status
+  function fetchScopeStatus() {
+    showLoading();
+    $.ajax({
+      url: '/api/get_user_scope/',
+      method: 'GET',
+      success: function(data) {
+        scopeStatus = data.scopes;
+        scopeLimit = data.offer.scopes_limit === 'Limits.ONE' ? 'one' : 'many';
+        updateUserScopes();
+        fetchMapData();
+      },
+      error: function(xhr) {
+        showAlert(xhr.responseJSON?.error || 'Error fetching scope status');
+        if (xhr.status === 401) {
+          showAlert('Please login to continue');
+          window.location.href = '/';
+        }
+      },
+      complete: hideLoading
+    });
+  }
+
+  function fetchScopes() {
+    if (!currentBounds || isLoading || scopesFetched) return;
+    console.log('Fetching scopes, isLoading:', isLoading);
+    $.ajax({
+      url: '/api/getScopesBB/',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      data: JSON.stringify({
+        minx: currentBounds.getSouthWest().lng,
+        miny: currentBounds.getSouthWest().lat,
+        maxx: currentBounds.getNorthEast().lng,
+        maxy: currentBounds.getNorthEast().lat
+      }),
+      success: function(data) {
+        scopeLayerGroup.clearLayers();
+        scopeGeometries.clear();
+        data.features.forEach(feature => {
+          const scopeName = feature.properties.scope_name;
+          const latlngs = feature.geometry.coordinates[0].map(c => [c[1], c[0]]);
+          const color = scopeStatus.includes(scopeName) ? 'yellow' :
+                        feature.properties.status === 'INACTIVE' ? 'gray' : 'orange';
+          const poly = L.polygon(latlngs, {
+            color: color,
+            weight: 2,
+            fillColor: scopeStatus.includes(scopeName) ? 'rgba(255,255,0,0.5)' : 'rgba(0,0,0,0)'
+          }).addTo(scopeLayerGroup);
+
+          scopeGeometries.set(scopeName, feature.geometry);
+
+          let popupContent;
+          if (feature.properties.status === 'INACTIVE') {
+            popupContent = `<button class="popup-button" onclick="requestActivation('${scopeName}')">Request ${scopeName} to be activated</button>`;
+          } else if (scopeStatus.includes(scopeName)) {
+            popupContent = `<button class="popup-button" onclick="unsubscribeScope('${scopeName}')">Unsubscribe ${scopeName}</button>`;
+          } else if (scopeLimit === 'one' && scopeStatus.length > 0) {
+            popupContent = `<button class="popup-button" disabled>Add ${scopeName} to cart</button>`;
+          } else {
+            popupContent = `<button class="popup-button" onclick="subscribeScope('${scopeName}')">Add ${scopeName} to cart</button>`;
+          }
+          poly.bindPopup(popupContent);
+        });
+        scopesFetched = true;
+      },
+      error: function(xhr) {
+        showAlert(xhr.responseJSON?.error || 'Error fetching scopes');
+        scopesFetched = true;
+      }
+    });
+  }
+
+  function fetchFields() {
+    if (!currentBounds || isLoading || fieldsFetched) return;
+    console.log('Fetching fields, isLoading:', isLoading);
+    $.ajax({
+      url: '/api/fetch-field-bb/',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      data: JSON.stringify({
+        minx: currentBounds.getSouthWest().lng,
+        miny: currentBounds.getSouthWest().lat,
+        maxx: currentBounds.getNorthEast().lng,
+        maxy: currentBounds.getNorthEast().lat
+      }),
+      success: function(data) {
+        fieldLayerGroup.clearLayers();
+        if (data.features) {
+          data.features.forEach(feature => {
+            const latlngs = feature.geometry.coordinates[0].map(c => [c[1], c[0]]);
+            console.log('Adding field polygon, GeoID:', feature.properties['GEO Id']);
+            L.polygon(latlngs, {
+              color: 'red',
+              fillColor: 'red',
+              opacity: 0.5,
+              weight: 2
+            }).addTo(fieldLayerGroup);
+          });
+        } else if (data.message === 'No fields found') {
+          // showAlert('No fields found in this area', true);
+        }
+        fieldsFetched = true;
+      },
+      error: function(xhr) {
+        console.error('Fetch fields error:', xhr.responseJSON);
+        // showAlert(xhr.responseJSON?.error || 'Error fetching fields');
+        fieldsFetched = true;
+      }
+    });
+  }
+
+  // Fetch all map data
+  function fetchMapData() {
+    fetchScopes();
+    fetchFields();
+  }
+
+  // Subscribe to a scope
+  window.subscribeScope = function(scope_name) {
+    showLoading();
+    const coords = scopeGeometries.get(scope_name);
+    if (!coords) {
+      showAlert('Error: Scope geometry not found');
+      hideLoading();
+      return;
+    }
+    console.log('Subscribing to scope:', scope_name, coords);
+    $.ajax({
+      url: '/api/add_user_scope/',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      data: JSON.stringify({ scope_name: scope_name, coordinates: coords }),
+      success: function(response) {
+        showAlert(`${scope_name} subscribed successfully`, true);
+        fetchScopeStatus();
+      },
+      error: function(xhr) {
+        console.error('Subscribe error:', xhr.responseJSON);
+        showAlert(xhr.responseJSON?.error || 'Error subscribing to scope');
+      },
+      complete: hideLoading
+    });
+  };
+
+  // Unsubscribe from a scope
+  window.unsubscribeScope = function(scope_name) {
+    showLoading();
+    console.log('Unsubscribing from scope:', scope_name);
+    $.ajax({
+      url: '/api/remove_scope/',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      data: JSON.stringify({ scope_name: scope_name }),
+      success: function(response) {
+        showAlert(`${scope_name} removed successfully`, true);
+        fetchScopeStatus();
+      },
+      error: function(xhr) {
+        console.error('Unsubscribe error:', xhr.responseJSON);
+        showAlert(xhr.responseJSON?.error || 'Error unsubscribing from scope');
+      },
+      complete: hideLoading
+    });
+  };
+
+  // Request scope activation
+  window.requestActivation = function(scope_name) {
+    showLoading();
+    const coords = scopeGeometries.get(scope_name);
+    if (!coords) {
+      showAlert('Error: Scope geometry not found');
+      hideLoading();
+      return;
+    }
+    console.log('Requesting activation for scope:', scope_name, coords);
+    $.ajax({
+      url: '/api/request-activation/',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      data: JSON.stringify({ scope: [scope_name], coordinates: coords }),
+      success: function(response) {
+        showAlert(response.message || `${scope_name} activation requested`, true);
+      },
+      error: function(xhr) {
+        console.error('Activation error:', xhr.responseJSON);
+        showAlert(xhr.responseJSON?.error || 'Error requesting activation');
+      },
+      complete: hideLoading
+    });
+  };
+
+  // Update user scopes in sidebar
+  function updateUserScopes() {
+    const scopesDiv = $('#scopes');
+    scopesDiv.empty();
+    scopeStatus.forEach(function(scope) {
       $.get('/api/get_coordinates/' + scope + '/', function(coordData) {
         const rawCoords = coordData.geometry.coordinates[0];
-
-        // Convert [lon, lat] to [lat, lon]
         const latlngs = rawCoords.map(c => [c[1], c[0]]);
 
-        // Draw on main map
-        const poly = L.polygon(latlngs, { color: "yellow", weight: 1 }).addTo(map);
+        const poly = L.polygon(latlngs, { color: "yellow", weight: 1 }).addTo(scopeLayerGroup);
 
-        // Create mini-map thumbnail
         const thumbnailContainer = $('<div>').addClass('scope-map');
         const thumbnailMap = L.map(thumbnailContainer[0], {
           attributionControl: false,
@@ -171,9 +533,8 @@
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(thumbnailMap);
         L.polygon(latlngs, { color: "yellow", weight: 1 }).addTo(thumbnailMap);
-        // thumbnailMap.fitBounds(L.polygon(latlngs).getBounds(), { padding: [5, 5] });
         const bounds = L.polygon(latlngs).getBounds();
-        thumbnailMap.setView(bounds.getCenter(), 7); // You can adjust 12 to any value (e.g., 11 or 10) for broader view
+        thumbnailMap.setView(bounds.getCenter(), 7);
 
         const container = $('<div>').addClass('scope-entry').click(() => {
           map.fitBounds(poly.getBounds(), { padding: [50, 50] });
@@ -186,31 +547,46 @@
         setTimeout(() => thumbnailMap.invalidateSize(), 200);
       });
     });
-  });
+  }
 
+  // Search by GeoID or address
   function searchLocation() {
     const geoid = $('#geoidSearch').val();
     const address = $('#addressSearch').val();
 
     if (geoid) {
-      $.get('/api/get_coordinates/' + geoid + '/', function(data) {
-        const rawCoords = data.geometry.coordinates[0];
+      showLoading();
+      $.get(`/api/field-boundary/${geoid}/`, function(data) {
+        if (geojsonLayer) {
+          map.removeLayer(geojsonLayer);
+        }
+        const rawCoords = data.coordinates[0];
         const latlngs = rawCoords.map(c => [c[1], c[0]]);
-        const poly = L.polygon(latlngs, { color: "yellow", weight: 1 }).addTo(map);
-        map.fitBounds(poly.getBounds(), { padding: [50, 50] });
-      }).fail(() => alert('GeoID not found'));
+        geojsonLayer = L.polygon(latlngs, {
+          color: 'red',
+          weight: 1.5,
+          fillOpacity: 0.0
+        }).addTo(map);
+        map.fitBounds(geojsonLayer.getBounds(), { padding: [50, 50] });
+      }).fail(function(xhr) {
+        showAlert(xhr.responseJSON?.error || 'GeoID not found');
+      }).always(hideLoading);
     } else if (address) {
+      showLoading();
       $.get('https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(address), function(data) {
         if (data.length > 0) {
           const lat = data[0].lat;
           const lon = data[0].lon;
           map.setView([lat, lon], 13);
           L.marker([lat, lon]).addTo(map).bindPopup(address).openPopup();
+        } else {
+          showAlert('Address not found');
         }
-      });
+      }).always(hideLoading);
     }
   }
 
+  // Address autocomplete
   $('#addressSearch').on('input', function () {
     const query = $(this).val();
     if (query.length < 3) {
@@ -258,8 +634,38 @@
     }
   });
 
+  function centerOnCurrentLocation() {
+    if (navigator.geolocation) {
+      showLoading();
+      navigator.geolocation.getCurrentPosition(
+        position => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          map.setView([lat, lng], 13);
+          hideLoading();
+        },
+        () => {
+          showAlert('Unable to retrieve your location');
+          hideLoading();
+        }
+      );
+    } else {
+      showAlert('Geolocation is not supported by your browser');
+    }
+  }
+
+  map.on('moveend zoomend', function() {
+    currentBounds = map.getBounds();
+    scopesFetched = false;
+    fieldsFetched = false;
+    fetchMapData();
+  });
+
   $(window).on('resize', function () {
     map.invalidateSize();
   });
+
+  fetchScopeStatus();
+  centerOnCurrentLocation();
 </script>
 {% endblock %}

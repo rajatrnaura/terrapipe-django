@@ -1,6 +1,6 @@
 # urls.py (add this to your URLs configuration)
 from django.urls import path
-from .views import get_user_geoids ,login,  get_user_geoids_with_details , products , products_page , login_page , asset_map_view , get_geoids , get_field_boundary , logout_view , delete_field , get_user_scope , get_coordinates , scope_map
+from .views import *
 urlpatterns = [
     path('login/', login, name='login'),
     path('get-user-geoids/', get_user_geoids_with_details, name='get_user_geoids'),
@@ -14,6 +14,11 @@ urlpatterns = [
     path('delete-field/<str:field_id>/', delete_field, name='delete_field'),
     path('scope_map/', scope_map, name='scope_map'),
     path('get_user_scope/', get_user_scope, name='get_user_scope'),
-    path('get_coordinates/<str:scope>/', get_coordinates, name='get_coordinates')
+    path('get_coordinates/<str:scope>/', get_coordinates, name='get_coordinates'),
+    path("getScopesBB/", get_scopes_bb, name="get_scopes_bb"),
+    path("request-activation/", request_activation, name="request_activation"),
+    path("remove_scope/", remove_scope, name="remove_scope"),
+    path("add_user_scope/", add_user_scope, name="add_user_scope"),
+    path("fetch-field-bb/", fetch_field_bb, name="fetch_field_bb"),
 
 ]
