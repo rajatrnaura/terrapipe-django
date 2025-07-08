@@ -1003,3 +1003,42 @@ def fetch_field_bb(request):
             'message': 'Error while fetching fields',
             'error': str(e)
         }, status=500)
+
+def forgot_password_page(request):
+    return render(request , 'forgot_password.html')
+
+@csrf_exempt
+def forgot_password(request):
+    try:
+        if request.method != 'POST':
+            return JsonResponse({'message': 'Method not allowed'}, status=405)
+
+        email = request.POST.get('email')
+        if not email:
+            return JsonResponse({'message': 'Email is required'}, status=400)
+
+        flask_url = "https://api.terrapipe.io/forgot-password"
+
+        headers = {
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "email": email
+        }
+
+        response = requests.post(flask_url, headers=headers, json=payload, timeout=10)
+        
+        if response.status_code == 200:
+            return JsonResponse(response.json(), status=200)
+        else:
+            return JsonResponse({
+                'message': 'Forgot Password Failed',
+                'error': response.json().get("error", "Unknown error")
+            }, status=response.status_code)
+
+    except Exception as e:
+        return JsonResponse({
+            'message': 'Forgot Password Error',
+            'error': str(e)
+        }, status=500)
