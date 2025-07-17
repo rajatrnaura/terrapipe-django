@@ -1042,3 +1042,43 @@ def forgot_password(request):
             'message': 'Forgot Password Error',
             'error': str(e)
         }, status=500)
+
+def signup_page(request):
+    return render(request , 'signup.html')
+
+@csrf_exempt
+def signup(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+
+            payload = {
+                "firstName": data.get("firstName"),
+                "lastName": data.get("lastName"),
+                "companyName": data.get("companyName"),
+                "email": data.get("email"),
+                "phone_number": data.get("phone_number"),
+                "password": data.get("password"),
+                "confirm_password": data.get("confirm_password"),
+                "coords": data.get("coords")
+            }
+
+            flask_url = "https://api.terrapipe.io/signup"
+            headers = {"Content-Type": "application/json"}
+
+            response = requests.post(flask_url, headers=headers, json=payload, timeout=10)
+            api_response = response.json()
+
+            print(f"res : {api_response}")
+            print(f"status: {response.status_code}")
+
+            return JsonResponse(api_response, status=response.status_code)
+
+        except Exception as e:
+            return JsonResponse({
+                "message": "Signup error",
+                "error": str(e)
+            }, status=500)
+
+    return JsonResponse({"message": "Method not allowed"}, status=405)
+

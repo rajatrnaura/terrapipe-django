@@ -22,6 +22,7 @@ urlpatterns = [
     path("fetch-field-bb/", fetch_field_bb, name="fetch_field_bb"),
     path("forgot_password_page/", forgot_password_page, name="forgot_password_page"),
     path("forgot_password", forgot_password, name="forgot_password"),
-
+    path("register", signup_page, name="signup_page"),
+    path("signup", signup, name="signup"),
 
 ]
