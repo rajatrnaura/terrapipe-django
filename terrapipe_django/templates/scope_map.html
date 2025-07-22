@@ -310,7 +310,7 @@
   function fetchScopeStatus() {
     showLoading();
     $.ajax({
-      url: '/api/get_user_scope/',
+      url: '/get_user_scope/',
       method: 'GET',
       success: function(data) {
         scopeStatus = data.scopes;
@@ -333,7 +333,7 @@
     if (!currentBounds || isLoading || scopesFetched) return;
     console.log('Fetching scopes, isLoading:', isLoading);
     $.ajax({
-      url: '/api/getScopesBB/',
+      url: '/getScopesBB/',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -385,7 +385,7 @@
     if (!currentBounds || isLoading || fieldsFetched) return;
     console.log('Fetching fields, isLoading:', isLoading);
     $.ajax({
-      url: '/api/fetch-field-bb/',
+      url: '/fetch-field-bb/',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -439,7 +439,7 @@
     }
     console.log('Subscribing to scope:', scope_name, coords);
     $.ajax({
-      url: '/api/add_user_scope/',
+      url: '/add_user_scope/',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -462,7 +462,7 @@
     showLoading();
     console.log('Unsubscribing from scope:', scope_name);
     $.ajax({
-      url: '/api/remove_scope/',
+      url: '/remove_scope/',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -491,7 +491,7 @@
     }
     console.log('Requesting activation for scope:', scope_name, coords);
     $.ajax({
-      url: '/api/request-activation/',
+      url: '/request-activation/',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -513,7 +513,7 @@
     const scopesDiv = $('#scopes');
     scopesDiv.empty();
     scopeStatus.forEach(function(scope) {
-      $.get('/api/get_coordinates/' + scope + '/', function(coordData) {
+      $.get('/get_coordinates/' + scope + '/', function(coordData) {
         const rawCoords = coordData.geometry.coordinates[0];
         const latlngs = rawCoords.map(c => [c[1], c[0]]);
 
@@ -556,7 +556,7 @@
 
     if (geoid) {
       showLoading();
-      $.get(`/api/field-boundary/${geoid}/`, function(data) {
+      $.get(`/field-boundary/${geoid}/`, function(data) {
         if (geojsonLayer) {
           map.removeLayer(geojsonLayer);
         }
