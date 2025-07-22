@@ -10,7 +10,7 @@ import json
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
 from dashboard.models import User  # Correct import
-from .models import UserFields
+from .models import UserFields , Application
 from dashboard.utils.utils import Utils
 from s2_service import S2Service
 from django.http import JsonResponse
@@ -24,7 +24,7 @@ from django.shortcuts import render
 import requests
 import jwt
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
-
+import re
 
 
 load_dotenv()
@@ -50,6 +50,7 @@ def token_required(view_func):
         return view_func(request, *args, **kwargs)
     return wrapper
 
+ 
  
 @csrf_exempt
 @require_POST
@@ -105,6 +106,550 @@ def login(request):
     except Exception as e:
         return JsonResponse({"message": "Login error", "error": str(e)}, status=500)
  
+@token_required
+def products(request):
+    applications = Application.objects.all().values('id', 'root', 'description', 'picture')
+    
+    data = [
+        {
+            "id": str(app['id']),
+            "root": app['root'],
+            "description": app['description'],
+            "picture": app['picture']
+        }
+        for app in applications
+    ]
+    
+    return JsonResponse({
+        'message': f'Welcome, user {request.session.get("user_registry_id")}!',
+        'products': data
+    })
+
+def asset_map_view(request):
+    return render(request, "asset_map.html")
+
+def get_user_registry_id_from_session(request):
+    user_registry_id = request.session.get('user_registry_id')
+    if not user_registry_id:
+        return None
+
+    return user_registry_id
+
+VALID_GEO_ID_REGEX = re.compile(r'^[a-f0-9]{64}$', re.IGNORECASE)
+def get_geoids(request):
+    try:
+        access_token = request.session.get('access_token')
+        if not access_token:
+            return JsonResponse({'message': 'User not authenticated'}, status=401)
+
+        flask_url = "https://api.terrapipe.io/geo-id"
+        headers = {
+            "Authorization": f"Bearer {access_token}"
+        }
+
+        response = requests.get(flask_url, headers=headers, timeout=10)
+
+        if response.status_code == 200:
+            data = response.json()
+            geo_ids_raw = data.get("geo_ids", [])
+
+            geo_ids = list({
+                geo_id for geo_id, _, _ in geo_ids_raw
+                if geo_id and VALID_GEO_ID_REGEX.fullmatch(geo_id)
+            })
+
+            if not geo_ids:
+                return JsonResponse({'message': 'No valid Geo Ids found.'}, status=404)
+
+            return JsonResponse({
+                'message': 'Geo Ids fetched successfully',
+                'geoids': geo_ids
+            }, status=200)
+
+        else:
+            return JsonResponse({
+                'message': 'Failed to fetch geo ids from Flask',
+                'error': response.json().get("message", "Unknown error")
+            }, status=response.status_code)
+
+    except Exception as e:
+        return JsonResponse({
+            'message': 'Error while fetching geo ids',
+            'error': str(e)
+        }, status=500)
+
+def get_field_boundary(request, geoid):
+    try:
+        access_token = request.session.get("access_token")
+        if not access_token:
+            return JsonResponse({"message": "User not authenticated"}, status=401)
+
+        flask_url = f"https://api.terrapipe.io/fetch-field/{geoid}"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        response = requests.get(flask_url, headers=headers, timeout=10)
+
+        if response.status_code != 200:
+            return JsonResponse({
+                "message": "Failed to fetch field data",
+                "error": response.json().get("message", "Unknown error")
+            }, status=response.status_code)
+
+        data = response.json()
+
+        json_resp = data.get("JSON Response", {})
+        geojson = json_resp.get("Geo JSON", {})
+        geometry = geojson.get("geometry", {})
+        coordinates = geometry.get("coordinates")
+
+        covering_scopes_raw = data.get("covering_scopes")
+        if isinstance(covering_scopes_raw, str):
+            try:
+                covering_scopes = json.loads(covering_scopes_raw)
+            except json.JSONDecodeError:
+                covering_scopes = {}
+        else:
+            covering_scopes = covering_scopes_raw or {}
+
+        return JsonResponse({
+            "geoid": geoid,
+            "coordinates": coordinates,
+            "geometry_type": geometry.get("type"),
+            "field_name": data.get("field_name"),
+            "registered": data.get("registered"),
+            "user_field_id": data.get("user_field_id"),
+            "covering_scopes": covering_scopes,
+            "all_scopes_paid": data.get("all_scopes_paid"),
+            "raw_geojson": geojson,
+            "raw_response": json_resp
+        }, status=200)
+
+    except Exception as e:
+        return JsonResponse({
+            "message": "Error while fetching field boundary",
+            "error": str(e)
+        }, status=500)
+    
+@csrf_exempt
+def delete_field(request, field_id):
+    access_token = request.session.get("access_token")
+    if not access_token:
+        return JsonResponse({"success": False, "message": "User not authenticated"}, status=401)
+
+    flask_api_url = f"https://api.terrapipe.io/delete-field/{field_id}"
+    headers = {
+        "Authorization": f"Bearer {access_token}"
+    }
+
+    try:
+        response = requests.delete(flask_api_url, headers=headers)
+
+        try:
+            data = response.json()
+            print(f"data : {data}")
+        except ValueError:
+            return JsonResponse({"success": False, "message": "Flask response was not JSON"}, status=500)
+
+        if response.status_code == 200:
+            return JsonResponse({"success": True, "message": data.get("message", "Field deleted")})
+        else:
+            return JsonResponse({"success": False, "message": data.get("message", "Failed to delete")}, status=response.status_code)
+
+    except requests.RequestException as e:
+        return JsonResponse({"success": False, "message": f"Error calling Flask API: {e}"}, status=500)
+    
+
+def scope_map(request):
+    return render(request , 'scope_map.html')
+
+
+def get_user_scope(request):
+    try:
+        access_token = request.session.get('access_token')
+        if not access_token:
+            return JsonResponse({'message': 'User not authenticated'}, status=401)
+
+        flask_url = "https://api.terrapipe.io/get_user_scope"
+        headers = {
+            "Authorization": f"Bearer {access_token}"
+        }
+
+        response = requests.get(flask_url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            return JsonResponse(response.json(), status=200)
+        else:
+            return JsonResponse({
+                'message': 'Failed to fetch user scope',
+                'error': response.json().get("message", "Unknown error")
+            }, status=response.status_code)
+
+    except Exception as e:
+        return JsonResponse({
+            'message': 'Error while fetching user scope',
+            'error': str(e)
+        }, status=500)
+
+@csrf_exempt
+def get_coordinates(request, scope):
+    try:
+        access_token = request.session.get('access_token')
+        if not access_token:
+            return JsonResponse({'message': 'User not authenticated'}, status=401)
+
+        flask_url = "https://api.terrapipe.io/get-coordinates"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "scope": scope
+        }
+
+        response = requests.post(flask_url, headers=headers, json=payload, timeout=10)
+        if response.status_code == 200:
+            print(f"response : {response.json()}")
+            return JsonResponse(response.json(), status=200)
+        else:
+            return JsonResponse({
+                'message': 'Failed to fetch coordinates',
+                'error': response.json().get("message", "Unknown error")
+            }, status=response.status_code)
+
+    except Exception as e:
+        return JsonResponse({
+            'message': 'Error while fetching coordinates',
+            'error': str(e)
+        }, status=500)
+    
+@csrf_exempt
+def get_scopes_bb(request):
+    try:
+        access_token = request.session.get('access_token')
+        if not access_token:
+            return JsonResponse({'message': 'User not authenticated'}, status=401)
+
+        if request.method != 'POST':
+            return JsonResponse({'message': 'Method not allowed'}, status=405)
+
+        try:
+            data = json.loads(request.body)
+            minx = data.get('minx')
+            miny = data.get('miny')
+            maxx = data.get('maxx')
+            maxy = data.get('maxy')
+            if not all([minx, miny, maxx, maxy]):
+                return JsonResponse({'message': 'One or more parameters missing'}, status=400)
+        except json.JSONDecodeError:
+            return JsonResponse({'message': 'Invalid JSON data'}, status=400)
+
+        flask_url = "https://api.terrapipe.io/getScopesBB"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "minx": minx,
+            "miny": miny,
+            "maxx": maxx,
+            "maxy": maxy
+        }
+
+        response = requests.post(flask_url, headers=headers, json=payload, timeout=10)
+        if response.status_code == 200:
+            return JsonResponse(response.json(), status=200)
+        else:
+            return JsonResponse({
+                'message': 'Failed to fetch scopes',
+                'error': response.json().get("error", "Unknown error")
+            }, status=response.status_code)
+
+    except Exception as e:
+        return JsonResponse({
+            'message': 'Error while fetching scopes',
+            'error': str(e)
+        }, status=500)
+    
+
+@csrf_exempt
+def request_activation(request):
+    try:
+        access_token = request.session.get('access_token')
+        if not access_token:
+            return JsonResponse({'message': 'User not authenticated'}, status=401)
+
+        if request.method != 'POST':
+            return JsonResponse({'message': 'Method not allowed'}, status=405)
+
+        try:
+            data = json.loads(request.body)
+            scope_names = data.get('scope')
+            coordinates = data.get('coordinates')
+            if not scope_names:
+                return JsonResponse({'message': 'Parameter missing'}, status=400)
+
+            if isinstance(scope_names, str):
+                scope_names = [scope_names]
+        except json.JSONDecodeError:
+            return JsonResponse({'message': 'Invalid JSON data'}, status=400)
+
+        flask_url = "https://api.terrapipe.io/request-activation"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "scope": scope_names,
+            "coordinates": coordinates
+        }
+
+        response = requests.post(flask_url, headers=headers, json=payload, timeout=10)
+        print(f"request activation : {response.json()}")
+        if response.status_code == 200:
+            return JsonResponse(response.json(), status=200)
+        else:
+            return JsonResponse({
+                'message': 'Failed to request activation',
+                'error': response.json().get("error", "Unknown error")
+            }, status=response.status_code)
+
+    except Exception as e:
+        return JsonResponse({
+            'message': 'Error while requesting activation',
+            'error': str(e)
+        }, status=500)
+
+@csrf_exempt
+def remove_scope(request):
+    try:
+        access_token = request.session.get('access_token')
+        if not access_token:
+            return JsonResponse({'message': 'User not authenticated'}, status=401)
+
+        if request.method != 'POST':
+            return JsonResponse({'message': 'Method not allowed'}, status=405)
+
+        try:
+            data = json.loads(request.body)
+            scope_name = data.get('scope_name')
+            if not scope_name:
+                return JsonResponse({'message': 'Please provide a scope name'}, status=400)
+        except json.JSONDecodeError:
+            return JsonResponse({'message': 'Invalid JSON data'}, status=400)
+
+        flask_url = "https://api.terrapipe.io/remove_scope"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "scope_name": scope_name
+        }
+
+        response = requests.post(flask_url, headers=headers, json=payload, timeout=10)
+        if response.status_code == 200:
+            return JsonResponse(response.json(), status=200)
+        else:
+            return JsonResponse({
+                'message': 'Failed to remove scope',
+                'error': response.json().get("error", "Unknown error")
+            }, status=response.status_code)
+
+    except Exception as e:
+        return JsonResponse({
+            'message': 'Error while removing scope',
+            'error': str(e)
+        }, status=500)
+
+@csrf_exempt
+def add_user_scope(request):
+    try:
+        access_token = request.session.get('access_token')
+        if not access_token:
+            return JsonResponse({'message': 'User not authenticated'}, status=401)
+
+        if request.method != 'POST':
+            return JsonResponse({'message': 'Method not allowed'}, status=405)
+
+        try:
+            data = json.loads(request.body)
+            scope_name = data.get('scope_name')
+            coordinates = data.get('coordinates')
+            if not scope_name:
+                return JsonResponse({'message': 'Please provide a scope name'}, status=400)
+        except json.JSONDecodeError:
+            return JsonResponse({'message': 'Invalid JSON data'}, status=400)
+
+        flask_url = "https://api.terrapipe.io/add_user_scope"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "scope_name": scope_name,
+            "coordinates": coordinates
+        }
+
+        response = requests.post(flask_url, headers=headers, json=payload, timeout=10)
+        if response.status_code == 200:
+            return JsonResponse(response.json(), status=200)
+        else:
+            return JsonResponse({
+                'message': 'Failed to add scope',
+                'error': response.json().get("error", "Unknown error")
+            }, status=response.status_code)
+
+    except Exception as e:
+        return JsonResponse({
+            'message': 'Error while adding scope',
+            'error': str(e)
+        }, status=500)
+
+
+@csrf_exempt
+def fetch_field_bb(request):
+    try:
+        access_token = request.session.get('access_token')
+        if not access_token:
+            return JsonResponse({'message': 'User not authenticated'}, status=401)
+
+        if request.method != 'POST':
+            return JsonResponse({'message': 'Method not allowed'}, status=405)
+
+        try:
+            data = json.loads(request.body)
+            minx = data.get('minx')
+            miny = data.get('miny')
+            maxx = data.get('maxx')
+            maxy = data.get('maxy')
+            if not all([minx, miny, maxx, maxy]):
+                return JsonResponse({'message': 'One or more parameters missing'}, status=400)
+        except json.JSONDecodeError:
+            return JsonResponse({'message': 'Invalid JSON data'}, status=400)
+
+        flask_url = "https://api.terrapipe.io/fetch-field-bb"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "minx": minx,
+            "miny": miny,
+            "maxx": maxx,
+            "maxy": maxy
+        }
+
+        response = requests.post(flask_url, headers=headers, json=payload, timeout=10)
+        if response.status_code == 200:
+            return JsonResponse(response.json(), status=200)
+        else:
+            return JsonResponse({
+                'message': 'Failed to fetch fields',
+                'error': response.json().get("error", "Unknown error")
+            }, status=response.status_code)
+
+    except Exception as e:
+        return JsonResponse({
+            'message': 'Error while fetching fields',
+            'error': str(e)
+        }, status=500)
+
+def forgot_password_page(request):
+    return render(request , 'forgot_password.html')
+
+@csrf_exempt
+def forgot_password(request):
+    try:
+        if request.method != 'POST':
+            return JsonResponse({'message': 'Method not allowed'}, status=405)
+
+        email = request.POST.get('email')
+        if not email:
+            return JsonResponse({'message': 'Email is required'}, status=400)
+
+        flask_url = "https://api.terrapipe.io/forgot-password"
+
+        headers = {
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "email": email
+        }
+
+        response = requests.post(flask_url, headers=headers, json=payload, timeout=10)
+        
+        if response.status_code == 200:
+            return JsonResponse(response.json(), status=200)
+        else:
+            return JsonResponse({
+                'message': 'Forgot Password Failed',
+                'error': response.json().get("error", "Unknown error")
+            }, status=response.status_code)
+
+    except Exception as e:
+        return JsonResponse({
+            'message': 'Forgot Password Error',
+            'error': str(e)
+        }, status=500)
+
+def signup_page(request):
+    return render(request , 'signup.html')
+
+@csrf_exempt
+def signup(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+
+            payload = {
+                "firstName": data.get("firstName"),
+                "lastName": data.get("lastName"),
+                "companyName": data.get("companyName"),
+                "email": data.get("email"),
+                "phone_number": data.get("phone_number"),
+                "password": data.get("password"),
+                "confirm_password": data.get("confirm_password"),
+                "coords": data.get("coords")
+            }
+
+            flask_url = "https://api.terrapipe.io/signup"
+            headers = {"Content-Type": "application/json"}
+
+            response = requests.post(flask_url, headers=headers, json=payload, timeout=10)
+            api_response = response.json()
+
+            print(f"res : {api_response}")
+            print(f"status: {response.status_code}")
+
+            return JsonResponse(api_response, status=response.status_code)
+
+        except Exception as e:
+            return JsonResponse({
+                "message": "Signup error",
+                "error": str(e)
+            }, status=500)
+
+    return JsonResponse({"message": "Method not allowed"}, status=405)
+
+
+def login_page(request):
+    return render(request, 'login.html', {
+        'token': request.COOKIES.get('access_token')
+    })
+
+
+@require_POST
+@csrf_exempt
+def logout_view(request):
+    request.session.flush()
+    return JsonResponse({"message": "Logged out successfully"})
+
+    
+def products_page(request):
+    return render(request, 'products.html', {
+        'token': request.COOKIES.get('access_token')
+    })
+
  
 @require_GET
 def get_user_geoids_with_details(request):
@@ -295,8 +840,6 @@ def register_field_boundary(request):
             "resolution_level": resolution_level
         }
 
-        print("Payload:", payload)
-
         # Send POST request to AgStack
         agstack_response = requests.post(
             url="https://api-ar.agstack.org/register-field-boundary",
@@ -306,8 +849,6 @@ def register_field_boundary(request):
             },
             json=payload
         )
-
-        print("Response:", agstack_response.status_code, agstack_response.text)
 
         if agstack_response.ok:
             return JsonResponse(agstack_response.json(), status=agstack_response.status_code)
