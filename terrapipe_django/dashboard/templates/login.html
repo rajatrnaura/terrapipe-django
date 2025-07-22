@@ -34,7 +34,7 @@
 <script>
 const token = localStorage.getItem("access_token");
 if (token) {
-  window.location.href = "{% url 'products_page' %}";
+  window.location.href = "{% url 'asset_map_page' %}";
 }
 
 document.getElementById("login-form").onsubmit = async (e) => {
@@ -51,7 +51,7 @@ document.getElementById("login-form").onsubmit = async (e) => {
     const data = await res.json();
     if (res.ok) {
         localStorage.setItem("access_token", data.access_token);
-        window.location.href = "{% url 'products_page' %}";
+        window.location.href = "{% url 'asset_map_page' %}";
     } else {
         document.getElementById("login-error").innerText = data.message || data.error;
     }

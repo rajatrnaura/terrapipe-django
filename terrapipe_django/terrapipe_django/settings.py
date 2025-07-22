@@ -26,7 +26,7 @@ SECRET_KEY = 'django-insecure-+)ir4dv0dv%_o6refv86o&w003yum-#+q0=)whh1*vrb0#9()p
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = ['eta.terrapipe.io']
+ALLOWED_HOSTS = ['eta.terrapipe.io','*']
 
 
 # Application definition

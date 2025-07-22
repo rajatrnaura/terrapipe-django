@@ -66,11 +66,11 @@ def login(request):
         flask_login_url = "https://api.terrapipe.io/"
         response = requests.post(flask_login_url, json={"email": email, "password": password})
  
-        print(f"response : {response.json()}")
+        # print(f"response : {response.json()}")
         if response.status_code == 200:
             resp_data = response.json()
             token = resp_data.get("access_token")
-            print(f"token : {token}")
+            # print(f"token : {token}")
             if not token:
                 return JsonResponse({"message": "Token not found in response"}, status=500)
             # print(f"key : {settings.TP_SECRET_KEY}")
@@ -89,8 +89,8 @@ def login(request):
             request.session["access_token"] = token
             request.session["user_registry_id"] = user_registry_id
  
-            print(f"token : {token}")
-            print(f'user_registry_id : {user_registry_id}')
+            # print(f"token : {token}")
+            # print(f'user_registry_id : {user_registry_id}')
             return JsonResponse({
                 "message": "Login successful",
                 "access_token": token,
@@ -245,7 +245,7 @@ def delete_field(request, field_id):
 
         try:
             data = response.json()
-            print(f"data : {data}")
+            # print(f"data : {data}")
         except ValueError:
             return JsonResponse({"success": False, "message": "Flask response was not JSON"}, status=500)
 
@@ -307,7 +307,7 @@ def get_coordinates(request, scope):
 
         response = requests.post(flask_url, headers=headers, json=payload, timeout=10)
         if response.status_code == 200:
-            print(f"response : {response.json()}")
+            # print(f"response : {response.json()}")
             return JsonResponse(response.json(), status=200)
         else:
             return JsonResponse({
@@ -403,7 +403,7 @@ def request_activation(request):
         }
 
         response = requests.post(flask_url, headers=headers, json=payload, timeout=10)
-        print(f"request activation : {response.json()}")
+        # print(f"request activation : {response.json()}")
         if response.status_code == 200:
             return JsonResponse(response.json(), status=200)
         else:
@@ -618,8 +618,8 @@ def signup(request):
             response = requests.post(flask_url, headers=headers, json=payload, timeout=10)
             api_response = response.json()
 
-            print(f"res : {api_response}")
-            print(f"status: {response.status_code}")
+            # print(f"res : {api_response}")
+            # print(f"status: {response.status_code}")
 
             return JsonResponse(api_response, status=response.status_code)
 
