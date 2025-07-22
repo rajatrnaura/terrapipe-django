@@ -1,327 +1,385 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Draw and Manage Fields</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
-  <style>
-    html, body, #map { height: 100%; margin: 0; }
-    #form-container {
-      position: absolute; top: 70px; right: 10px; background: #fff; padding: 15px; z-index: 1000;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2); border-radius: 10px; width: 250px;
-    }
-    #form-container input, #form-container select, #form-container textarea {
-      width: 100%; margin-bottom: 10px; padding: 8px; border: 1px solid #ccc; border-radius: 5px;
-    }
-    #form-container button {
-      width: 48%; margin: 4px 1%; padding: 8px; border: none; border-radius: 5px;
-      background: #28a745; color: white; cursor: pointer;
-    }
-    #form-container button:hover { background: #218838; }
-    #wkt-output {
-      font-size: 12px; padding: 6px; background: #f8f8f8; border: 1px solid #ccc;
-      margin-top: 10px; word-break: break-word; white-space: pre-wrap;
-    }
-    #response-card {
-      position: absolute; top: 8px; left: 58px; background: #fff; padding: 15px; z-index: 1000;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2); border-radius: 10px; width: 250px;
-      height: 550px; font-size: 14px; overflow: auto; white-space: nowrap;
-    }
-    .json-tree ul { list-style-type: none; padding-left: 20px; }
-    .json-tree li { margin: 2px 0; font-family: monospace; }
-    .json-key { font-weight: bold; color: #3c3c3c; }
-    .json-value { color: #007bff; }
-    .json-collapsible { cursor: pointer; user-select: none; }
-    .json-collapsible::before { content: '▸ '; }
-    .json-collapsible.open::before { content: '▾ '; }
-    #loader {
-      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0, 0, 0, 0.5); z-index: 2000; justify-content: center; align-items: center;
-    }
-    .spinner {
-      border: 4px solid rgba(255, 255, 255, 0.3); border-top: 4px solid #28a745;
-      border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite;
-    }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-  </style>
-</head>
-<body>
+{% extends "base.html" %}
 
-<div id="map"></div>
-<div id="loader"><div class="spinner"></div></div>
+{% block content %}
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+  }
 
-<div id="form-container">
-  <h4>Field Info</h4>
-  <input type="text" id="fieldName" placeholder="Field Name (optional)">
-  <input type="text" id="s2_index" placeholder="S2 Index (optional)">
-  <select id="mode">
-    <option>Manual</option>
-    <option>Automated</option>
-  </select>
+  body {
+    background: none !important;
+    background-color: transparent !important;
+  }
 
-  <textarea id="manual-wkt" placeholder="Paste WKT here (optional)" rows="4"></textarea>
+  #map-container {
+    display: flex;
+    position: absolute;
+    top: 60px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: calc(100vh - 60px);
+  }
 
-  <!-- ADDED FOR GEOJSON UPLOAD -->
-  <input type="file" id="geojson-upload" accept=".geojson,application/json" style="margin-top:10px;" />
+  #map {
+    flex-grow: 1;
+    height: 100%;
+    width: 100%;
+    z-index: 1;
+  }
 
-  <div style="display:flex; justify-content:space-between;">
-    <button onclick="fetchField()">Fetch</button>
-    <button onclick="registerField()">Register</button>
+  #field-sidebar {
+    width: 370px;
+    background-color: white;
+    color: black;
+    overflow-y: auto;
+    padding: 15px;
+    font-family: 'Segoe UI', sans-serif;
+    border-left: 1px solid #ccc;
+    z-index: 2;
+    transition: all 0.3s ease-in-out;
+  }
+
+  #field-sidebar.collapsed {
+    display: none;
+  }
+
+  #toggle-sidebar {
+    font-size: 18px;
+    width: auto;
+    height: auto;
+    padding: 0 6px;
+    line-height: 1;
+    background: none;
+    color: #333;
+    border: none;
+    box-shadow: none;
+    margin-right: 5px;
+    transition: all 0.3s ease;
+  }
+
+  #toggle-sidebar.floating {
+    position: absolute;
+    top: 75px;
+    right: 15px;
+    z-index: 9999;
+    width: 35px;
+    height: 35px;
+    line-height: 33px;
+    background-color: white;
+    border-radius: 50%;
+    font-size: 18px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    border: 1px solid #ccc;
+    text-align: center;
+  }
+
+  .leaflet-mini {
+    height: 130px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    overflow: hidden;
+  }
+
+  .field-card {
+    background-color: #f9f9f9;
+    padding: 10px;
+    margin-bottom: 20px;
+    border-radius: 12px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    transition: transform 0.2s;
+  }
+
+  .field-card:hover {
+    transform: scale(1.01);
+  }
+
+  .field-id {
+    font-size: 13px;
+    color: #333;
+    margin-bottom: 4px;
+    word-break: break-word;
+  }
+
+  .btn-fetch {
+    background-color: #0047AB;
+    border: none;
+    color: white;
+    padding: 6px 12px;
+    font-size: 15px;
+    border-radius: 12px;
+  }
+
+  .btn-delete {
+    background-color: #dc3545;
+    border: none;
+    color: white;
+    padding: 6px 12px;
+    font-size: 15px;
+    border-radius: 12px;
+  }
+
+  .search-overlay {
+    position: absolute;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    width: 450px;
+  }
+
+  .search-overlay .input-group {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  }
+
+  .search-overlay input {
+    border-radius: 20px;
+    font-size: 14px;
+    height: 40px;
+    padding: 0 15px;
+    border: 1px solid #ccc;
+  }
+
+  .leaflet-control-attribution {
+    background: rgba(255, 255, 255, 0.8);
+    font-size: 10px;
+    padding: 2px 4px;
+  }
+
+  #delete-alert {
+    display: none;
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    z-index: 9999;
+    background: #d4edda;
+    color: #155724;
+    padding: 18px 28px;
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    font-size: 18px;
+    font-weight: bold;
+    max-width: 400px;
+    line-height: 1.5;
+  }
+
+</style>
+
+<div id="map-container">
+  <div id="map"></div>
+
+  <div id="field-sidebar">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <button id="toggle-sidebar" class="btn"><i class="fa-solid fa-right-long"></i></button>
+      <h5 class="mb-3 fw-bold" style="flex-grow: 1; text-align: center;">My Fields</h5>
+    </div>
   </div>
-
-  <div id="wkt-output"></div>
 </div>
 
-<div id="response-card" style="display:none">
-  <h4>API Response</h4>
-  <div id="response-geo-id"></div>
-  <div id="response-geo-json" class="json-tree"></div>
-  <p id="response-status"></p>
-  <div id="response-s2-tokens"></div>
+<!-- Alert for delete -->
+<div id="delete-alert"></div>
+
+<!-- Search Bar -->
+<div class="search-overlay">
+  <div class="input-group">
+    <input id="searchGeoID" type="text" class="form-control" placeholder="Search GeoID..." />
+  </div>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
-<script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
 
 <script>
-const map = L.map('map');
-
-// Try to locate user on load
-map.locate({
-  setView: true,
-  maxZoom: 16,
-  watch: false
-});
-
-// On success, center and zoom
-map.on('locationfound', function(e) {
-  map.setView(e.latlng, 16); // 16 = desired zoom level
-  L.circle(e.latlng, {
-    radius: e.accuracy,
-    color: 'green',
-    fillOpacity: 0.2
+  const map = L.map("map").setView([30.9, 76.8], 8);
+  L.tileLayer("https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}", {
+    maxZoom: 20,
+    subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+    attribution: "Map by Google"
   }).addTo(map);
-});
 
-// On failure, fall back to Delhi
-map.on('locationerror', function() {
-  map.setView([28.6139, 77.2090], 16);
-});
+  const fieldBoundsMap = {};
+  const fieldLayers = {};
+  let activeHighlightLayer = null;
 
-L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-  attribution: '© Esri Imagery'
-}).addTo(map);
-
-const drawnItems = new L.FeatureGroup();
-map.addLayer(drawnItems);
-
-const drawControl = new L.Control.Draw({
-  position: 'topleft',
-  draw: {
-    polygon: true,
-    rectangle: true,
-    circle: false,
-    polyline: false,
-    marker: false
-  },
-  edit: { featureGroup: drawnItems }
-});
-map.addControl(drawControl);
-
-L.Control.geocoder({ defaultMarkGeocode: false })
-  .on('markgeocode', function(e) {
-    map.fitBounds(e.geocode.bbox);
-  })
-  .addTo(map);
-
-// Restore last polygon if available
-const lastGeoJson = localStorage.getItem('lastGeoJson');
-if (lastGeoJson) {
-  try {
-    const geoLayer = L.geoJSON(JSON.parse(lastGeoJson), {
-      style: { color: '#ffa500', weight: 3, opacity: 0.9, fillOpacity: 0.4 }
-    }).addTo(drawnItems);
-    map.fitBounds(geoLayer.getBounds());
-  } catch (e) {
-    console.warn('Invalid GeoJSON in localStorage');
-  }
-}
-
-map.on('draw:created', function (e) {
-  const layer = e.layer;
-  drawnItems.addLayer(layer);
-  if (layer instanceof L.Polygon || layer instanceof L.Rectangle) {
-    const latlngs = layer.getLatLngs()[0];
-    const coords = latlngs.map(p => `${p.lng} ${p.lat}`).join(',') + `,${latlngs[0].lng} ${latlngs[0].lat}`;
-    const wkt = `POLYGON ((${coords}))`;
-    document.getElementById('wkt-output').innerText = `WKT:\n${wkt}`;
-  }
-});
-
-function fetchField() {
-  alert("You can implement field fetch using S2 index or field name.");
-}
-
-function renderJSONTree(data, parent) {
-  const ul = document.createElement('ul');
-  for (const key in data) {
-    const li = document.createElement('li');
-    if (typeof data[key] === 'object' && data[key] !== null) {
-      const span = document.createElement('span');
-      span.className = 'json-key json-collapsible open';
-      span.textContent = key + ': ';
-      const nested = document.createElement('div');
-      nested.style.display = 'block';
-      span.addEventListener('click', () => {
-        const isOpen = span.classList.toggle('open');
-        nested.style.display = isOpen ? 'block' : 'none';
-      });
-      renderJSONTree(data[key], nested);
-      li.appendChild(span);
-      li.appendChild(nested);
-    } else {
-      li.innerHTML = `<span class="json-key">${key}:</span> <span class="json-value">${data[key]}</span>`;
+  async function loadGeoIDs() {
+    const res = await fetch("/geoids/");
+    const data = await res.json();
+    for (const geoid of data.geoids) {
+      await loadFieldBoundary(geoid, true);
     }
-    ul.appendChild(li);
   }
-  parent.appendChild(ul);
-}
 
-function registerField() {
-  const loader = document.getElementById('loader');
-  loader.style.display = 'flex';
+  async function loadFieldBoundary(geoid, addToSidebar = false, shouldZoom = false) {
+    const res = await fetch(`/field-boundary/${geoid}/`);
+    const data = await res.json();
+    if (!data.raw_geojson || !data.raw_geojson.geometry) return;
 
-  const s2 = document.getElementById('s2_index').value || "8,13";
-  const manualInput = document.getElementById('manual-wkt').value.trim();
-  let wkt = manualInput || document.getElementById('wkt-output').innerText.replace(/^WKT:\s*/, '').trim();
+    const userFieldId = data.user_field_id;
+    const geoLayer = L.geoJSON(data.raw_geojson, {
+      style: { color: '#00ff99', weight: 2 }
+    }).addTo(map);
 
-  const payload = {
-    wkt: wkt,
-    threshold: 90,
-    s2_index: s2,
-    resolution_level: 13
-  };
+    fieldLayers[geoid] = geoLayer;
+    const bounds = geoLayer.getBounds();
+    fieldBoundsMap[geoid] = bounds;
 
-  fetch('/api/register-field-boundary/', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + localStorage.getItem('access_token')
-    },
-    body: JSON.stringify(payload)
-  })
-  .then(response => response.json().then(data => ({ ok: response.ok, body: data })))
-  .then(({ ok, body }) => {
-    loader.style.display = 'none';
-    const responseCard = document.getElementById('response-card');
-    responseCard.style.display = 'block';
-
-    if (ok) {
-      localStorage.setItem('lastGeoJson', JSON.stringify(body["Geo JSON"]));
-
-      document.getElementById('response-geo-id').innerText = `Geo Id: ${body["Geo Id"]}`;
-      const geoJsonContainer = document.getElementById('response-geo-json');
-      geoJsonContainer.innerHTML = '';
-      renderJSONTree(body["Geo JSON"], geoJsonContainer);
-      document.getElementById('response-status').innerText = `Status: ${body.message}`;
-
-      const s2Tokens = body["S2 Cell Tokens"];
-      let s2TokensHtml = 'S2 Cell Tokens: {';
-      if (s2Tokens && typeof s2Tokens === 'object') {
-        for (const [level, values] of Object.entries(s2Tokens)) {
-          s2TokensHtml += `<div class="nested">${level}: ${Array.isArray(values) ? '[' + values.join(', ') + ']' : values}</div>`;
-        }
-      } else {
-        s2TokensHtml += '<div class="nested">None</div>';
-      }
-      s2TokensHtml += '}';
-      document.getElementById('response-s2-tokens').innerHTML = s2TokensHtml;
-
-      const layer = L.geoJSON(body["Geo JSON"], {
-        style: { color: '#28a745', weight: 3, opacity: 0.9, fillOpacity: 0.4 }
-      }).addTo(drawnItems);
-      map.fitBounds(layer.getBounds());
-    } else {
-      document.getElementById('response-geo-id').innerText = '';
-      document.getElementById('response-geo-json').innerText = '';
-      document.getElementById('response-status').innerText = `Status: ${body.message || 'Unknown error'}`;
-      document.getElementById('response-s2-tokens').innerText = '';
+    if (shouldZoom) {
+      map.fitBounds(bounds, { padding: [30, 30] });
     }
-  })
-  .catch(error => {
-    loader.style.display = 'none';
-    document.getElementById('response-card').style.display = 'block';
-    document.getElementById('response-geo-id').innerText = '';
-    document.getElementById('response-geo-json').innerText = '';
-    document.getElementById('response-status').innerText = 'Status: Error occurred while registering field.';
-    document.getElementById('response-s2-tokens').innerText = '';
-    console.error("Error:", error);
-  });
-}
 
-// ADDED FOR GEOJSON UPLOAD
-document.getElementById('geojson-upload').addEventListener('change', function(event) {
-  const file = event.target.files[0];
-  if (!file) return;
+    if (!addToSidebar) return;
 
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      const geojson = JSON.parse(e.target.result);
+    const cardId = `mini-map-${geoid}`;
+    const sidebar = document.getElementById("field-sidebar");
+    if (document.getElementById(cardId)) return;
 
-      localStorage.setItem('lastGeoJson', JSON.stringify(geojson));
+    const card = document.createElement("div");
+    card.className = "field-card";
+    card.innerHTML = `
+      <div id="${cardId}" class="leaflet-mini mb-2"></div>
+      <div class="field-id fw-bold">${data.field_name || geoid}</div>
+      <div class="field-id text-muted">${geoid}</div>
+      <div class="d-flex justify-content-between mt-2">
+        <button class="btn btn-fetch btn-sm" onclick="zoomTo('${geoid}')">Fetch Field</button>
+        <button class="btn btn-delete btn-sm" onclick="deleteField('${userFieldId}', '${geoid}')">Delete</button>
+      </div>
+    `;
+    sidebar.appendChild(card);
 
-      drawnItems.clearLayers();
-      const layer = L.geoJSON(geojson, {
-        style: { color: '#ffa500', weight: 3, opacity: 0.9, fillOpacity: 0.4 }
-      }).addTo(drawnItems);
-      map.fitBounds(layer.getBounds());
-
-      const wkt = geojsonToWKT(geojson);
-      document.getElementById('wkt-output').innerText = `WKT:\n${wkt}`;
-    } catch (err) {
-      alert("Invalid GeoJSON file.");
-      console.error(err);
-    }
-  };
-  reader.readAsText(file);
-});
-
-// ADDED FOR GEOJSON UPLOAD
-function geojsonToWKT(geojson) {
-  if (geojson.type === "FeatureCollection") {
-    geojson = geojson.features[0];
-  }
-  if (geojson.type === "Feature") {
-    geojson = geojson.geometry;
-  }
-
-  if (geojson.type === "Polygon") {
-    let rings = geojson.coordinates.map(ring =>
-      ring.map(pt => `${pt[0]} ${pt[1]}`).join(", ")
-    );
-    return `POLYGON((${rings.join("), (")}))`;
-  } else if (geojson.type === "MultiPolygon") {
-    let polys = geojson.coordinates.map(polygon => {
-      let rings = polygon.map(ring =>
-        ring.map(pt => `${pt[0]} ${pt[1]}`).join(", ")
-      );
-      return `((${rings.join("), (")}))`;
+    const miniMap = L.map(cardId, {
+      attributionControl: false,
+      zoomControl: false,
+      dragging: false,
+      scrollWheelZoom: false
     });
-    return `MULTIPOLYGON(${polys.join(", ")})`;
-  } else {
-    alert("Only Polygon or MultiPolygon GeoJSON is supported right now.");
-    return "";
-  }
-}
-</script>
 
-</body>
-</html>
+    L.tileLayer("https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}", {
+      maxZoom: 20,
+      subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+    }).addTo(miniMap);
+
+    const miniGeoLayer = L.geoJSON(data.raw_geojson).addTo(miniMap);
+    miniMap.fitBounds(miniGeoLayer.getBounds(), {
+      padding: [5, 5],
+      maxZoom: 18
+    });
+  }
+
+  function zoomTo(geoid) {
+    if (fieldBoundsMap[geoid]) {
+      map.fitBounds(fieldBoundsMap[geoid], { padding: [30, 30] });
+
+      if (activeHighlightLayer) {
+        map.removeLayer(activeHighlightLayer);
+        activeHighlightLayer = null;
+      }
+
+      const fieldLayer = fieldLayers[geoid];
+      if (fieldLayer) {
+        const geojson = fieldLayer.toGeoJSON();
+        activeHighlightLayer = L.geoJSON(geojson, {
+          style: { color: 'yellow', weight: 5, dashArray: '6,4' }
+        }).addTo(map);
+        activeHighlightLayer.bringToFront();
+      }
+    } else {
+      alert("No bounds found for this field.");
+    }
+  }
+
+  async function deleteField(userFieldId, geoid) {
+    if (!confirm("Are you sure you want to delete this field?")) return;
+
+    try {
+      const res = await fetch(`/delete-field/${userFieldId}/`, {
+        method: 'DELETE',
+      });
+
+      const result = await res.json();
+      console.log("DELETE result:", result);
+
+      if (result.success) {
+        if (fieldLayers[geoid]) {
+          map.removeLayer(fieldLayers[geoid]);
+          delete fieldLayers[geoid];
+        }
+
+        const card = document.getElementById(`mini-map-${geoid}`);
+        if (card) card.closest(".field-card").remove();
+
+        const alertBox = document.getElementById("delete-alert");
+        alertBox.textContent = result.message || "Field deleted successfully.";
+        alertBox.style.display = "block";
+
+        setTimeout(() => {
+          alertBox.style.display = "none";
+        }, 3000);
+      } else {
+        alert(result.message || "Failed to delete field.");
+      }
+    } catch (err) {
+      console.error("Delete error:", err);
+      alert("An error occurred while deleting the field. Check console for details.");
+    }
+  }
+
+  async function searchGeoID() {
+    const geoid = document.getElementById("searchGeoID").value.trim();
+    if (!geoid) return alert("Please enter a GeoID");
+
+    if (fieldLayers["__search"]) {
+      map.removeLayer(fieldLayers["__search"]);
+    }
+
+    const res = await fetch(`/field-boundary/${geoid}/`);
+    const data = await res.json();
+
+    if (!data.raw_geojson || !data.raw_geojson.geometry) {
+      alert("Field not found.");
+      return;
+    }
+
+    const searchLayer = L.geoJSON(data.raw_geojson, {
+      style: { color: '#33ffcc', weight: 3 }
+    }).addTo(map);
+
+    const bounds = searchLayer.getBounds();
+    map.fitBounds(bounds, { padding: [30, 30] });
+
+    fieldLayers["__search"] = searchLayer;
+  }
+
+  document.getElementById("searchGeoID").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      searchGeoID();
+    }
+  });
+
+  document.getElementById("toggle-sidebar").addEventListener("click", function () {
+    const sidebar = document.getElementById("field-sidebar");
+    const toggleBtn = document.getElementById("toggle-sidebar");
+
+    const isCollapsed = sidebar.classList.toggle("collapsed");
+    toggleBtn.innerHTML = isCollapsed ? '<i class="fa-solid fa-left-long"></i>' : '<i class="fa-solid fa-right-long"></i>';
+
+    if (isCollapsed) {
+      toggleBtn.classList.add("floating");
+      document.body.appendChild(toggleBtn);
+    } else {
+      toggleBtn.classList.remove("floating");
+      const headerDiv = document.querySelector("#field-sidebar > div");
+      headerDiv.insertBefore(toggleBtn, headerDiv.firstChild);
+    }
+
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 300);
+  });
+
+  loadGeoIDs();
+</script>
+{% endblock %}
