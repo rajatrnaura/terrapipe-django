@@ -65,8 +65,10 @@
     <option>Automated</option>
   </select>
 
-  <!-- Manual WKT Input -->
   <textarea id="manual-wkt" placeholder="Paste WKT here (optional)" rows="4"></textarea>
+
+  <!-- ADDED FOR GEOJSON UPLOAD -->
+  <input type="file" id="geojson-upload" accept=".geojson,application/json" style="margin-top:10px;" />
 
   <div style="display:flex; justify-content:space-between;">
     <button onclick="fetchField()">Fetch</button>
@@ -89,7 +91,30 @@
 <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
 
 <script>
-const map = L.map('map').setView([28.6139, 77.2090], 16);
+const map = L.map('map');
+
+// Try to locate user on load
+map.locate({
+  setView: true,
+  maxZoom: 16,
+  watch: false
+});
+
+// On success, center and zoom
+map.on('locationfound', function(e) {
+  map.setView(e.latlng, 16); // 16 = desired zoom level
+  L.circle(e.latlng, {
+    radius: e.accuracy,
+    color: 'green',
+    fillOpacity: 0.2
+  }).addTo(map);
+});
+
+// On failure, fall back to Delhi
+map.on('locationerror', function() {
+  map.setView([28.6139, 77.2090], 16);
+});
+
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   attribution: '© Esri Imagery'
 }).addTo(map);
@@ -187,9 +212,9 @@ function registerField() {
   fetch('/api/register-field-boundary/', {
     method: 'POST',
     headers: {
-  'Content-Type': 'application/json',
-  'Authorization': 'Bearer ' + localStorage.getItem('access_token')
-  },
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + localStorage.getItem('access_token')
+    },
     body: JSON.stringify(payload)
   })
   .then(response => response.json().then(data => ({ ok: response.ok, body: data })))
@@ -240,6 +265,63 @@ function registerField() {
     console.error("Error:", error);
   });
 }
+
+// ADDED FOR GEOJSON UPLOAD
+document.getElementById('geojson-upload').addEventListener('change', function(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const geojson = JSON.parse(e.target.result);
+
+      localStorage.setItem('lastGeoJson', JSON.stringify(geojson));
+
+      drawnItems.clearLayers();
+      const layer = L.geoJSON(geojson, {
+        style: { color: '#ffa500', weight: 3, opacity: 0.9, fillOpacity: 0.4 }
+      }).addTo(drawnItems);
+      map.fitBounds(layer.getBounds());
+
+      const wkt = geojsonToWKT(geojson);
+      document.getElementById('wkt-output').innerText = `WKT:\n${wkt}`;
+    } catch (err) {
+      alert("Invalid GeoJSON file.");
+      console.error(err);
+    }
+  };
+  reader.readAsText(file);
+});
+
+// ADDED FOR GEOJSON UPLOAD
+function geojsonToWKT(geojson) {
+  if (geojson.type === "FeatureCollection") {
+    geojson = geojson.features[0];
+  }
+  if (geojson.type === "Feature") {
+    geojson = geojson.geometry;
+  }
+
+  if (geojson.type === "Polygon") {
+    let rings = geojson.coordinates.map(ring =>
+      ring.map(pt => `${pt[0]} ${pt[1]}`).join(", ")
+    );
+    return `POLYGON((${rings.join("), (")}))`;
+  } else if (geojson.type === "MultiPolygon") {
+    let polys = geojson.coordinates.map(polygon => {
+      let rings = polygon.map(ring =>
+        ring.map(pt => `${pt[0]} ${pt[1]}`).join(", ")
+      );
+      return `((${rings.join("), (")}))`;
+    });
+    return `MULTIPOLYGON(${polys.join(", ")})`;
+  } else {
+    alert("Only Polygon or MultiPolygon GeoJSON is supported right now.");
+    return "";
+  }
+}
 </script>
+
 </body>
 </html>

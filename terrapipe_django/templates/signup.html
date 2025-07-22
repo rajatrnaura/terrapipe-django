@@ -1,0 +1,173 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<style>
+  .toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background-color: #10b981;
+    color: white;
+    padding: 1rem 1.5rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    z-index: 9999;
+    display: none;
+    font-size: 1rem;
+  }
+
+  .toast.error {
+    background-color: #e74c3c;
+  }
+</style>
+
+<div class="d-flex justify-content-center align-items-center" style="min-height: 100vh;">
+  <div class="card p-4" style="background-color: rgba(26,26,46,0.95); border-radius: 12px; color: white; width: 100%; max-width: 450px;">
+    <div class="text-center mb-3">
+      <h4>Get Started</h4>
+      <small>Create your new account.</small>
+    </div>
+
+    <form id="signup-form" method="POST">
+      {% csrf_token %}
+
+      <div class="mb-3">
+        <input type="text" name="firstName" class="form-control" placeholder="First Name" required>
+      </div>
+
+      <div class="mb-3">
+        <input type="text" name="lastName" class="form-control" placeholder="Last Name" required>
+      </div>
+
+      <div class="mb-3">
+        <input type="text" name="companyName" class="form-control" placeholder="Company" required>
+      </div>
+
+      <div class="mb-3">
+        <input type="email" name="email" class="form-control" placeholder="Email" required>
+      </div>
+
+      <div class="mb-3">
+        <input type="text" name="phone_number" class="form-control" placeholder="Phone Number" required>
+      </div>
+
+      <div class="mb-3">
+        <input type="password" id="password" name="password" class="form-control" placeholder="Password" required>
+      </div>
+
+      <div class="mb-3">
+        <input type="password" name="confirm_password" class="form-control" placeholder="Confirm Password" required>
+      </div>
+
+      <input type="hidden" name="lat" id="lat" value="0.0">
+      <input type="hidden" name="lng" id="lng" value="0.0">
+
+      <div class="mb-2">
+        <div id="strength-bar" class="progress" style="height: 5px;">
+          <div class="progress-bar bg-success" role="progressbar" style="width: 100%;"></div>
+        </div>
+        <small class="text-success">Strong</small>
+      </div>
+
+      <div class="form-text mb-3" style="color: white;">
+        By signing up, you agree to our 
+        <a href="#" class="text-info">Terms of Service</a> and 
+        <a href="#" class="text-info">Privacy Policy</a>.
+      </div>
+
+      <button type="submit" class="btn btn-success w-100">Create Account</button>
+
+      <div class="text-center mt-3">
+        <a href="{% url 'login_page' %}" class="text-info">Already have an account?</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Custom Toast -->
+<div class="toast" id="toastBox"></div>
+
+<script>
+  // Password strength logic
+  const passwordInput = document.getElementById('password');
+  const strengthBar = document.getElementById('strength-bar').firstElementChild;
+
+  passwordInput.addEventListener('input', () => {
+    const val = passwordInput.value;
+    let strength = 0;
+    if (val.length >= 8) strength++;
+    if (/[A-Z]/.test(val)) strength++;
+    if (/[0-9]/.test(val)) strength++;
+    if (/[^A-Za-z0-9]/.test(val)) strength++;
+
+    strengthBar.style.width = (strength * 25) + "%";
+    strengthBar.className = "progress-bar";
+    if (strength >= 3) {
+      strengthBar.classList.add("bg-success");
+    } else if (strength === 2) {
+      strengthBar.classList.add("bg-warning");
+    } else {
+      strengthBar.classList.add("bg-danger");
+    }
+  });
+
+  // Auto-fill lat/lng
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      function(pos) {
+        document.getElementById("lat").value = pos.coords.latitude;
+        document.getElementById("lng").value = pos.coords.longitude;
+      },
+      function(error) {
+        console.warn("Geolocation error:", error);
+      }
+    );
+  }
+
+  // Submit via fetch
+  document.getElementById("signup-form").onsubmit = async function (e) {
+    e.preventDefault();
+    
+    const form = e.target;
+    const formData = new FormData(form);
+    const payload = {};
+
+    for (let [key, value] of formData.entries()) {
+      if (["lat", "lng"].includes(key)) {
+        payload[key] = parseFloat(value);
+      } else {
+        payload[key] = value;
+      }
+    }
+
+    payload.coords = {
+      lat: payload.lat,
+      lng: payload.lng
+    };
+    delete payload.lat;
+    delete payload.lng;
+
+    const res = await fetch("{% url 'signup' %}", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+
+    const toast = document.getElementById('toastBox');
+    toast.innerText = data.message || data.error || "Signup failed!";
+    toast.classList.remove("error");
+
+    if (!res.ok) {
+      toast.classList.add("error");
+    }
+
+    toast.style.display = 'block';
+    setTimeout(() => {
+      toast.style.display = 'none';
+    }, 4000);
+  };
+</script>
+{% endblock %}

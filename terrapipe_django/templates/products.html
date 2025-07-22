@@ -1,0 +1,198 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<style>
+    body {
+        background: linear-gradient(to bottom, #9fd3dc, #003e42);
+        margin: 0;
+        font-family: sans-serif;
+    }
+
+    .carousel-wrapper {
+        position: relative;
+        width: 100%;
+        max-width: 1400px;
+        margin: 100px auto 0; /* Increased top margin */
+        padding: 0 90px;
+        overflow: hidden;
+    }
+
+    .carousel-inner {
+        display: flex;
+        gap: 3rem;
+        overflow-x: auto;
+        scroll-behavior: smooth;
+        padding-bottom: 1rem;
+        width: 100%;
+    }
+
+    .carousel-inner::-webkit-scrollbar {
+        display: none;
+    }
+
+    .card {
+        background-color: white;
+        border: 4px solid #BCE0F0;
+        border-radius: 10px;
+        width: 250px;
+        min-width: 250px;
+        flex: 0 0 auto;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem 1rem;
+        text-align: center;
+    }
+
+    .card img {
+        width: 70px;
+        height: 70px;
+        border-radius: 50%;
+        background: #8AC7CD;
+        padding: 10px;
+        margin-bottom: 20px;
+    }
+
+    .card button {
+        background: #4B0082;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 10px;
+        font-weight: bold;
+        cursor: pointer;
+        font-size: 0.75rem; /* Smaller text */
+        width: 180px;        /* Fixed consistent width */
+        height: 45px;        /* Consistent height */
+        white-space: nowrap; /* Prevent wrapping */
+        overflow: hidden;    /* Hide overflow */
+        text-overflow: ellipsis; /* Add ... if it still overflows */
+        text-align: center;
+    }
+
+
+    .arrow-btn {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        background: transparent;
+        border: none;
+        font-size: 2rem;
+        font-weight: bold;
+        cursor: pointer;
+        color: white;
+        z-index: 10;
+        width: 40px;
+        height: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .arrow-left {
+        left: 10px;
+    }
+
+    .arrow-right {
+        right: 10px;
+    }
+
+    @media (max-width: 768px) {
+        .carousel-wrapper {
+            padding: 0 20px;
+            margin-top: 80px;
+        }
+
+        .card {
+            width: 180px;
+            min-width: 180px;
+        }
+
+        .carousel-inner {
+            gap: 1.5rem;
+        }
+
+        .card img {
+            width: 50px;
+            height: 50px;
+            padding: 6px;
+        }
+
+        .card button {
+            padding: 8px 14px;
+            font-size: 0.8rem;
+        }
+
+        .arrow-btn {
+            font-size: 1.8rem;
+            width: 30px;
+            height: 50px;
+        }
+    }
+</style>
+
+
+<div class="carousel-wrapper">
+    <button class="arrow-btn arrow-left" onclick="scrollCarousel(-1)">←</button>
+    <div class="carousel-inner" id="carousel-inner">
+        <!-- Cards injected here -->
+    </div>
+    <button class="arrow-btn arrow-right" onclick="scrollCarousel(1)">→</button>
+</div>
+
+<p class="text-danger text-center" id="error"></p>
+
+<script>
+let applications = [];
+
+window.onload = async () => {
+    const token = localStorage.getItem("access_token");
+    if (!token) {
+        window.location.href = "{% url 'login_page' %}";
+        return;
+    }
+
+    const res = await fetch("{% url 'products' %}", {
+        headers: { "Authorization": "Bearer " + token }
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+        applications = data.products || [];
+        renderApplications();
+    } else {
+        document.getElementById("error").innerText = data.message || data.error;
+    }
+};
+
+function renderApplications() {
+    const container = document.getElementById("carousel-inner");
+    container.innerHTML = applications.map(app => `
+        <div class="card">
+            <img src="https://cdn-icons-png.flaticon.com/512/4712/4712027.png" alt="${app.root} icon">
+            <button>${app.root}</button>
+        </div>
+    `).join("");
+}
+
+function scrollCarousel(direction) {
+    const container = document.getElementById("carousel-inner");
+    const cardWidth = 250;
+    const gap = 48;
+    const cardsPerView = 4;
+    const scrollAmount = (cardWidth + gap) * cardsPerView - gap;
+    const maxScroll = container.scrollWidth - container.clientWidth;
+    let newScroll = container.scrollLeft + (direction * scrollAmount);
+
+    if (newScroll >= maxScroll) {
+        newScroll = 0;
+    } else if (newScroll < 0) {
+        newScroll = maxScroll;
+    }
+
+    container.scrollTo({ left: newScroll, behavior: 'smooth' });
+}
+</script>
+{% endblock %}
