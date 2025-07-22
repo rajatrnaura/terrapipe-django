@@ -1,0 +1,95 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "field_name": "Field 1"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [76.7857, 30.9602],
+            [76.7858, 30.9599],
+            [76.7853, 30.9599],
+            [76.7853, 30.9601],
+            [76.7857, 30.9602]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "field_name": "Field 2"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [76.7860, 30.9610],
+            [76.7862, 30.9607],
+            [76.7859, 30.9606],
+            [76.7857, 30.9608],
+            [76.7860, 30.9610]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "field_name": "Field 3"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [76.7845, 30.9585],
+            [76.7849, 30.9583],
+            [76.7848, 30.9579],
+            [76.7844, 30.9581],
+            [76.7845, 30.9585]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "field_name": "Field 4"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [76.7867, 30.9592],
+            [76.7869, 30.9590],
+            [76.7866, 30.9588],
+            [76.7864, 30.9590],
+            [76.7867, 30.9592]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "field_name": "Field 5"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [76.7872, 30.9615],
+            [76.7874, 30.9612],
+            [76.7870, 30.9610],
+            [76.7868, 30.9613],
+            [76.7872, 30.9615]
+          ]
+        ]
+      }
+    }
+  ]
+}
