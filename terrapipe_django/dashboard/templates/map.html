@@ -206,7 +206,7 @@
   let activeHighlightLayer = null;
 
   async function loadGeoIDs() {
-    const res = await fetch("/api/geoids/");
+    const res = await fetch("/geoids/");
     const data = await res.json();
     for (const geoid of data.geoids) {
       await loadFieldBoundary(geoid, true);
@@ -214,7 +214,7 @@
   }
 
   async function loadFieldBoundary(geoid, addToSidebar = false, shouldZoom = false) {
-    const res = await fetch(`/api/field-boundary/${geoid}/`);
+    const res = await fetch(`/field-boundary/${geoid}/`);
     const data = await res.json();
     if (!data.raw_geojson || !data.raw_geojson.geometry) return;
 
@@ -295,7 +295,7 @@
     if (!confirm("Are you sure you want to delete this field?")) return;
 
     try {
-      const res = await fetch(`/api/delete-field/${userFieldId}/`, {
+      const res = await fetch(`delete-field/${userFieldId}/`, {
         method: 'DELETE',
       });
 
@@ -335,7 +335,7 @@
       map.removeLayer(fieldLayers["__search"]);
     }
 
-    const res = await fetch(`/api/field-boundary/${geoid}/`);
+    const res = await fetch(`/field-boundary/${geoid}/`);
     const data = await res.json();
 
     if (!data.raw_geojson || !data.raw_geojson.geometry) {
