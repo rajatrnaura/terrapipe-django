@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+
+<!-- {% block title %}Login - Terrapipe{% endblock %} -->
+
+{% block content %}
+<div class="login-container">
+  <div class="login-card">
+    <h2 class="text-center">Welcome back</h2>
+    <p class="text-center mb-4">Sign into your account</p>
+    <form id="login-form" method="post">
+      {% csrf_token %}
+    {% csrf_token %}
+    <div class="mb-3">
+      <label for="email" class="form-label">Email</label>
+      <input type="email" class="form-control" id="email" name="email" value="rajat.mundra@gmail.com" required>
+    </div>
+    <div class="mb-3">
+      <label for="password" class="form-label">Password</label>
+      <input type="password" class="form-control" id="password" name="password" required>
+    </div>
+    <div class="mb-3 d-flex justify-content-between">
+      <div>
+        <input type="checkbox" id="keep-signed-in" name="keep_signed_in">
+        <label for="keep-signed-in" class="form-label">Keep me signed in</label>
+      </div>
+      <a href="{% url 'forgot_password_page' %}" id="forgot-password">Forgot Password?</a>
+    </div>
+    <p class="text-danger text-center" id="login-error"></p>
+    <button type="submit" class="btn btn-primary w-100">Login</button>
+    <p class="text-center mt-3"><a href="{% url 'signup_page' %}">Don't have an account?</a></p>
+  </form>
+</div>
+</div>
+<script>
+const token = localStorage.getItem("access_token");
+if (token) {
+  window.location.href = "{% url 'products_page' %}";
+}
+
+document.getElementById("login-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const email = e.target.email.value;
+    const password = e.target.password.value;
+
+    const res = await fetch("{% url 'login' %}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+        localStorage.setItem("access_token", data.access_token);
+        window.location.href = "{% url 'products_page' %}";
+    } else {
+        document.getElementById("login-error").innerText = data.message || data.error;
+    }
+};
+</script>
+{% endblock %}
