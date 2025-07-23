@@ -33,7 +33,7 @@ end
 # Unset irrelevant variables.
 deactivate nondestructive
 
-set -gx VIRTUAL_ENV /home/adminweb/Rnaura/terrapipe-django/terrapipe_django/venv
+set -gx VIRTUAL_ENV /home/app-user/webapps/terrapipe-django/terrapipe_django/venv
 
 set -gx _OLD_VIRTUAL_PATH $PATH
 set -gx PATH "$VIRTUAL_ENV/"bin $PATH

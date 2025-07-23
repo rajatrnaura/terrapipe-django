@@ -295,7 +295,11 @@
     if (!confirm("Are you sure you want to delete this field?")) return;
 
     try {
+<<<<<<< HEAD
       const res = await fetch(`/delete-field/${userFieldId}/`, {
+=======
+      const res = await fetch(`delete-field/${userFieldId}/`, {
+>>>>>>> 6ae5da3bb89e70ccb45887617b4d0c13698dc5d0
         method: 'DELETE',
       });
 
