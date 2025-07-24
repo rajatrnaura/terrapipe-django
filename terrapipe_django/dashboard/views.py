@@ -867,4 +867,4 @@ def register_field_boundary(request):
 
     
 def map_view(request):
-    return render(request, "map.html")
+    return render(request, "register_field_map.html")
