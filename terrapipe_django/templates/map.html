@@ -227,55 +227,8 @@
     const bounds = geoLayer.getBounds();
     fieldBoundsMap[geoid] = bounds;
 
-<<<<<<< HEAD
     if (shouldZoom) {
       map.fitBounds(bounds, { padding: [30, 30] });
-=======
-  fetch('/register-field-boundary/', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + localStorage.getItem('access_token')
-    },
-    body: JSON.stringify(payload)
-  })
-  .then(response => response.json().then(data => ({ ok: response.ok, body: data })))
-  .then(({ ok, body }) => {
-    loader.style.display = 'none';
-    const responseCard = document.getElementById('response-card');
-    responseCard.style.display = 'block';
-
-    if (ok) {
-      localStorage.setItem('lastGeoJson', JSON.stringify(body["Geo JSON"]));
-
-      document.getElementById('response-geo-id').innerText = `Geo Id: ${body["Geo Id"]}`;
-      const geoJsonContainer = document.getElementById('response-geo-json');
-      geoJsonContainer.innerHTML = '';
-      renderJSONTree(body["Geo JSON"], geoJsonContainer);
-      document.getElementById('response-status').innerText = `Status: ${body.message}`;
-
-      const s2Tokens = body["S2 Cell Tokens"];
-      let s2TokensHtml = 'S2 Cell Tokens: {';
-      if (s2Tokens && typeof s2Tokens === 'object') {
-        for (const [level, values] of Object.entries(s2Tokens)) {
-          s2TokensHtml += `<div class="nested">${level}: ${Array.isArray(values) ? '[' + values.join(', ') + ']' : values}</div>`;
-        }
-      } else {
-        s2TokensHtml += '<div class="nested">None</div>';
-      }
-      s2TokensHtml += '}';
-      document.getElementById('response-s2-tokens').innerHTML = s2TokensHtml;
-
-      const layer = L.geoJSON(body["Geo JSON"], {
-        style: { color: '#28a745', weight: 3, opacity: 0.9, fillOpacity: 0.4 }
-      }).addTo(drawnItems);
-      map.fitBounds(layer.getBounds());
-    } else {
-      document.getElementById('response-geo-id').innerText = '';
-      document.getElementById('response-geo-json').innerText = '';
-      document.getElementById('response-status').innerText = `Status: ${body.message || 'Unknown error'}`;
-      document.getElementById('response-s2-tokens').innerText = '';
->>>>>>> 6ae5da3bb89e70ccb45887617b4d0c13698dc5d0
     }
 
     if (!addToSidebar) return;
