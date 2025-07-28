@@ -25,6 +25,12 @@ from django.db.models import F
 
 import re
 
+import stripe
+from django.conf import settings
+from django.shortcuts import render, redirect
+from django.views import View
+from .models import ProductPlan, UserSubscription
+
 load_dotenv()
 
 
@@ -1003,3 +1009,261 @@ def fetch_field_bb(request):
             'message': 'Error while fetching fields',
             'error': str(e)
         }, status=500)
+
+def forgot_password_page(request):
+    return render(request , 'forgot_password.html')
+
+@csrf_exempt
+def forgot_password(request):
+    try:
+        if request.method != 'POST':
+            return JsonResponse({'message': 'Method not allowed'}, status=405)
+
+        email = request.POST.get('email')
+        if not email:
+            return JsonResponse({'message': 'Email is required'}, status=400)
+
+        flask_url = "https://api.terrapipe.io/forgot-password"
+
+        headers = {
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "email": email
+        }
+
+        response = requests.post(flask_url, headers=headers, json=payload, timeout=10)
+        
+        if response.status_code == 200:
+            return JsonResponse(response.json(), status=200)
+        else:
+            return JsonResponse({
+                'message': 'Forgot Password Failed',
+                'error': response.json().get("error", "Unknown error")
+            }, status=response.status_code)
+
+    except Exception as e:
+        return JsonResponse({
+            'message': 'Forgot Password Error',
+            'error': str(e)
+        }, status=500)
+
+def signup_page(request):
+    return render(request , 'signup.html')
+
+@csrf_exempt
+def signup(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+
+            payload = {
+                "firstName": data.get("firstName"),
+                "lastName": data.get("lastName"),
+                "companyName": data.get("companyName"),
+                "email": data.get("email"),
+                "phone_number": data.get("phone_number"),
+                "password": data.get("password"),
+                "confirm_password": data.get("confirm_password"),
+                "coords": data.get("coords")
+            }
+
+            flask_url = "https://api.terrapipe.io/signup"
+            headers = {"Content-Type": "application/json"}
+
+            response = requests.post(flask_url, headers=headers, json=payload, timeout=10)
+            api_response = response.json()
+
+            print(f"res : {api_response}")
+            print(f"status: {response.status_code}")
+
+            return JsonResponse(api_response, status=response.status_code)
+
+        except Exception as e:
+            return JsonResponse({
+                "message": "Signup error",
+                "error": str(e)
+            }, status=500)
+
+    return JsonResponse({"message": "Method not allowed"}, status=405)
+
+
+stripe.api_key = settings.STRIPE_SECRET_KEY
+
+
+
+def pricing_page(request):
+    user_id = request.session.get('user_registry_id')
+    plans = ProductPlan.objects.all().order_by('price')
+    user_subscription = UserSubscription.objects.filter(user_id=user_id, active=True).first()
+    return render(request, 'pricing.html', {
+        'plans': plans,
+        'user_subscription': user_subscription
+    })
+
+
+# class CreateCheckoutSessionView(View):
+#     def post(self, request, *args, **kwargs):
+#         user_id = request.session.get('user_registry_id')
+#         plan_id = request.POST.get('plan_id')
+#         plan = ProductPlan.objects.get(id=plan_id)
+#         if user_id:
+#             try:
+#                 user = User.objects.get(user_registry_id=user_id)
+#                 user_email = user.email
+#             except User.DoesNotExist:
+#                 user_email = None  # Or handle however you want
+#         else:
+#             user_email = None  # No user_registry_id in session
+
+#         # Free plan: Assign directly
+#         if plan.name == 'free':
+#             subscription, created = UserSubscription.objects.get_or_create(user_id=user_id)
+#             subscription.set_plan(plan)
+#             return redirect('pricing_page')
+
+#         # Paid plans: Go to Stripe
+#         price_id_map = {
+#             'plus': '10',  # Replace with real Stripe price IDs
+#             'pro': '30',
+#         }
+#         price_id = float(price_id_map.get(plan.name))
+#         print("plan id ", plan.id)
+#         print("user email =====", user_email)
+#         print("price id ======", price_id)
+#         checkout_session = stripe.checkout.Session.create(
+#             line_items=[
+#                 {
+#                     'price_data' : {
+#                         'currency' : 'usd',
+#                         'unit_amount' : int(price_id * 100),
+#                         'product_data' : {
+#                             'name' : plan.name
+#                         }
+#                     },
+#                     'quantity' : 1
+                    
+#                 }
+#             ],
+#             mode='payment',
+#             success_url=f'http://127.0.0.1:8000/api/success/?plan_id={plan.id}',
+#             cancel_url='http://127.0.0.1:8000/api/cancel/',
+#             customer_email=user_email,
+#         )
+
+#         return redirect(checkout_session.url)
+
+class CreateCheckoutSessionView(View):
+    def post(self, request, *args, **kwargs):
+        user_id = request.session.get('user_registry_id')
+        plan_id = request.POST.get('plan_id')
+        plan = ProductPlan.objects.get(id=plan_id)
+
+        if user_id:
+            try:
+                user = User.objects.get(user_registry_id=user_id)
+                user_email = user.email
+            except User.DoesNotExist:
+                user_email = None
+        else:
+            user_email = None
+
+        # Free plan: Assign directly
+        if plan.name == 'free':
+            subscription, _ = UserSubscription.objects.get_or_create(user_id=user_id)
+            subscription.set_plan(plan)
+            return redirect('pricing_page')
+
+        # Get price from ProductPlan model
+        price_amount = float(plan.price)  
+
+        checkout_session = stripe.checkout.Session.create(
+            line_items=[
+                {
+                    'price_data': {
+                        'currency': 'usd',
+                        'unit_amount': int(price_amount * 100),  # Convert to cents
+                        'product_data': {
+                            'name': plan.name
+                        }
+                    },
+                    'quantity': 1
+                }
+            ],
+            mode='payment',
+            success_url=f'http://127.0.0.1:8000/api/success/?session_id={{CHECKOUT_SESSION_ID}}&plan_id={plan.id}',
+            cancel_url='http://127.0.0.1:8000/api/cancel/',
+            customer_email=user_email,
+        )
+
+        # Reuse or create subscription
+        subscription = UserSubscription.objects.filter(user_id=user_id).first()
+        if subscription:
+            subscription.plan = plan
+            subscription.stripe_payment_id = checkout_session.id
+            subscription.active = False
+            subscription.save()
+        else:
+            subscription = UserSubscription.objects.create(
+                user_id=user_id,
+                plan=plan,
+                stripe_payment_id=checkout_session.id,
+                active=False,
+            )
+
+        return redirect(checkout_session.url)
+
+
+# def payment_success(request):
+#     plan_id = request.GET.get('plan_id')
+#     plan = ProductPlan.objects.get(id=plan_id)
+#     user_id = request.session.get('user_registry_id')
+
+#     if not user_id:
+#         return redirect('login_page')
+
+#     # Fetch the current active subscription for this user
+#     subscription = UserSubscription.objects.filter(user_id=user_id, active=True).first()
+
+#     if subscription:
+#         # Update the existing subscription plan
+#         subscription.set_plan(plan)
+#     else:
+#         # Create a new subscription (optional)
+#         subscription = UserSubscription.objects.create(user_id=user_id, plan=plan)
+#         subscription.set_plan(plan)
+
+#     return render(request, 'payment_success.html', {'plan': plan})
+
+def payment_success(request):
+    session_id = request.GET.get('session_id')
+    plan_id = request.GET.get('plan_id')
+    user_id = request.session.get('user_registry_id')
+
+    if not user_id:
+        return redirect('login_page')
+
+    try:
+        plan = ProductPlan.objects.get(id=plan_id)
+    except ProductPlan.DoesNotExist:
+        return redirect('pricing_page')
+
+    # Find the subscription with the stripe session id
+    subscription = UserSubscription.objects.filter(
+        user_id=user_id, stripe_payment_id=session_id
+    ).first()
+
+    if subscription:
+        subscription.set_plan(plan)
+    else:
+        subscription = UserSubscription.objects.create(
+            user_id=user_id, plan=plan, stripe_payment_id=session_id
+        )
+        subscription.set_plan(plan)
+
+    return render(request, 'payment_success.html', {'plan': plan})
+
+
+def payment_cancel(request):
+    return render(request, 'cancel.html')

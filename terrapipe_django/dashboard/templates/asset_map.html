@@ -166,6 +166,22 @@
     line-height: 1.5;
   }
 
+  .leaflet-tooltip.custom-tooltip {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  }
+
+  .leaflet-tooltip.custom-tooltip button {
+  background-color: #4B4BED;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  padding: 5px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  }
+
 </style>
 
 <div id="map-container">
@@ -214,22 +230,36 @@
   }
 
   async function loadFieldBoundary(geoid, addToSidebar = false, shouldZoom = false) {
-    const res = await fetch(`/api/field-boundary/${geoid}/`);
-    const data = await res.json();
-    if (!data.raw_geojson || !data.raw_geojson.geometry) return;
+  const res = await fetch(`/api/field-boundary/${geoid}/`);
+  const data = await res.json();
+  if (!data.raw_geojson || !data.raw_geojson.geometry) return;
 
-    const userFieldId = data.user_field_id;
-    const geoLayer = L.geoJSON(data.raw_geojson, {
-      style: { color: '#00ff99', weight: 2 }
-    }).addTo(map);
+  const userFieldId = data.user_field_id;
 
-    fieldLayers[geoid] = geoLayer;
-    const bounds = geoLayer.getBounds();
-    fieldBoundsMap[geoid] = bounds;
+  // Create field boundary layer
+  const geoLayer = L.geoJSON(data.raw_geojson, {
+    style: { color: '#00ff99', weight: 2 }
+  }).addTo(map);
 
-    if (shouldZoom) {
-      map.fitBounds(bounds, { padding: [30, 30] });
-    }
+  // Add click event for "Access Data" tooltip
+  geoLayer.on('click', function (e) {
+    const tooltip = L.tooltip({
+      permanent: false,
+      direction: 'top',
+      className: 'custom-tooltip'
+    })
+    .setLatLng(e.latlng)
+    .setContent('<button class="btn btn-primary btn-sm">Access Data</button>')
+    .addTo(map);
+  });
+
+  fieldLayers[geoid] = geoLayer;
+  const bounds = geoLayer.getBounds();
+  fieldBoundsMap[geoid] = bounds;
+
+  if (shouldZoom) {
+    map.fitBounds(bounds, { padding: [30, 30] });
+  }
 
     if (!addToSidebar) return;
 
@@ -269,10 +299,44 @@
     });
   }
 
+  async function loadSelectedField(geoid) {
+  const res = await fetch(`/api/field-boundary/${geoid}/`);
+  const data = await res.json();
+  if (!data.raw_geojson || !data.raw_geojson.geometry) return;
+
+  // Create the field boundary
+  activeHighlightLayer = L.geoJSON(data.raw_geojson, {
+    style: { color: 'yellow', weight: 5, dashArray: '6,4' }
+  }).addTo(map);
+
+  // Fit the map to the selected field
+  const bounds = activeHighlightLayer.getBounds();
+  map.fitBounds(bounds, { padding: [30, 30] });
+
+  // Add click event for Access Data tooltip
+  activeHighlightLayer.on('click', function (e) {
+    if (window.activeTooltip) {
+      map.removeLayer(window.activeTooltip);
+    }
+
+    const tooltip = L.tooltip({
+      permanent: false,
+      direction: 'top',
+      className: 'custom-tooltip'
+    })
+    .setLatLng(e.latlng)
+    .setContent('<button class="btn btn-primary btn-sm">Access Data</button>')
+    .addTo(map);
+
+    window.activeTooltip = tooltip;
+  });
+  }
+
   function zoomTo(geoid) {
     if (fieldBoundsMap[geoid]) {
       map.fitBounds(fieldBoundsMap[geoid], { padding: [30, 30] });
 
+      // Remove previous highlight layer
       if (activeHighlightLayer) {
         map.removeLayer(activeHighlightLayer);
         activeHighlightLayer = null;
@@ -285,11 +349,32 @@
           style: { color: 'yellow', weight: 5, dashArray: '6,4' }
         }).addTo(map);
         activeHighlightLayer.bringToFront();
+
+        // Add click event ONLY for highlighted field
+        activeHighlightLayer.on('click', function (e) {
+          // Remove any previous tooltip
+          if (window.activeTooltip) {
+            map.removeLayer(window.activeTooltip);
+          }
+
+          const tooltip = L.tooltip({
+            permanent: false,
+            direction: 'top',
+            className: 'custom-tooltip'
+          })
+          .setLatLng(e.latlng)
+          .setContent('<button class="btn btn-primary btn-sm">Access Data</button>')
+          .addTo(map);
+
+          window.activeTooltip = tooltip;
+        });
       }
     } else {
       alert("No bounds found for this field.");
     }
   }
+
+
 
   async function deleteField(userFieldId, geoid) {
     if (!confirm("Are you sure you want to delete this field?")) return;
