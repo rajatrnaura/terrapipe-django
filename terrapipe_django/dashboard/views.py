@@ -30,6 +30,7 @@ from django.conf import settings
 from django.shortcuts import render, redirect
 from django.views import View
 from .models import ProductPlan, UserSubscription
+from .models import UserCart
 
 load_dotenv()
 
@@ -1267,3 +1268,30 @@ def payment_success(request):
 
 def payment_cancel(request):
     return render(request, 'cancel.html')
+
+
+@csrf_exempt
+def add_to_cart(request):
+    if request.method != 'POST':
+        return JsonResponse({'message': 'Method not allowed'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        user_id = data.get('user_id')
+        scope_name = data.get('scope_name')
+
+        if not user_id or not scope_name:
+            return JsonResponse({'message': 'Missing parameters'}, status=400)
+
+        exists = UserCart.objects.filter(user_id=user_id, scope_name=scope_name).exists()
+        if exists:
+            return JsonResponse({'message': f'{scope_name} is already in cart'}, status=200)
+
+        # Add to cart
+        UserCart.objects.create(user_id=user_id, scope_name=scope_name)
+        return JsonResponse({'message': f'{scope_name} added to cart'}, status=201)
+
+    except json.JSONDecodeError:
+        return JsonResponse({'message': 'Invalid JSON data'}, status=400)
+    except Exception as e:
+        return JsonResponse({'message': 'Error adding scope to cart', 'error': str(e)}, status=500)

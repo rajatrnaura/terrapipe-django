@@ -313,3 +313,34 @@ class UserSubscription(models.Model):
 # ProductPlan.objects.get_or_create(name='free', price=0, features=["Access to one scope", "Access to one field"])
 # ProductPlan.objects.get_or_create(name='plus', price=10, features=["Access to one scope", "Unlimited fields"])
 # ProductPlan.objects.get_or_create(name='pro', price=30, features=["Unlimited scopes", "Unlimited fields"])
+
+
+def default_start_date():
+    return timezone.now()
+
+
+def default_end_date():
+    return timezone.now() + timedelta(days=30)
+
+
+class UserCart(models.Model):
+    user_id = models.UUIDField()
+    scope_name = models.CharField(max_length=100)
+
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.user_id} - {self.scope_name}"
+
+
+class UserScope(models.Model):
+    user_id = models.UUIDField()
+    scope_name = models.CharField(max_length=100)
+
+    start_date = models.DateTimeField(default=default_start_date)
+    end_date = models.DateTimeField(default=default_end_date)
+    active = models.BooleanField(default=False)
+
+
+    def __str__(self):
+        return f"{self.user_id} - {self.scope_name} ({'Active' if self.active else 'Inactive'})"

@@ -28,6 +28,7 @@ urlpatterns = [
     path('create-checkout-session/', CreateCheckoutSessionView.as_view(), name='create-checkout-session'),
     path('success/', payment_success, name='payment_success'),
     path('cancel/', payment_cancel, name='payment_cancel'),
+    path('add_to_cart/', add_to_cart, name='add_to_cart'),
 
 
 ]
