@@ -29,6 +29,9 @@ urlpatterns = [
     path('success/', payment_success, name='payment_success'),
     path('cancel/', payment_cancel, name='payment_cancel'),
     path('add_to_cart/', add_to_cart, name='add_to_cart'),
-
+    path('cart/', CartView.as_view(), name='cart_page'),
+    path('cart/clear/', ClearCartView.as_view(), name='clear_cart'),
+    path('cart/checkout/', CreateCartCheckoutSessionView.as_view(), name='create_cart_checkout_session'),
+    path('cart-payment-success/', CartPaymentSuccessView.as_view(), name='cart_payment_success'),
 
 ]

@@ -8,7 +8,7 @@
       <div class="col-md-3 mx-2">
         <div class="card pricing-card {% if user_subscription and user_subscription.plan.id == plan.id %}highlighted{% endif %}">
           <div class="card-body">
-            <h3 class="card-title text-light">${{ plan.price }}<span class="fs-6">/month</span></h3>
+            <h3 class="card-title text-light">${{ plan.price }}<span class="fs-6">/year</span></h3>
             <h5 class="text-white">{{ plan.get_name_display }}</h5>
             <ul class="list-unstyled text-light my-3">
               {% for feature in plan.features %}

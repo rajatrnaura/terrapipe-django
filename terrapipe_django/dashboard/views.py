@@ -30,7 +30,7 @@ from django.conf import settings
 from django.shortcuts import render, redirect
 from django.views import View
 from .models import ProductPlan, UserSubscription
-from .models import UserCart
+from .models import UserCart , UserScope
 
 load_dotenv()
 
@@ -1295,3 +1295,79 @@ def add_to_cart(request):
         return JsonResponse({'message': 'Invalid JSON data'}, status=400)
     except Exception as e:
         return JsonResponse({'message': 'Error adding scope to cart', 'error': str(e)}, status=500)
+
+
+
+
+class CartView(View):
+    def get(self, request):
+        SCOPE_PRICE_USD = 100
+        user_id = request.session.get('user_registry_id')
+        if not user_id:
+            return redirect('login')
+
+        scopes = UserCart.objects.filter(user_id=user_id)
+        total_price = len(scopes) * SCOPE_PRICE_USD
+        return render(request, 'cart_payment.html', {'scopes': scopes, 'total': total_price , 'SCOPE_PRICE_USD':SCOPE_PRICE_USD})
+
+
+class ClearCartView(View):
+    def post(self, request):
+        user_id = request.session.get('user_registry_id')
+        UserCart.objects.filter(user_id=user_id).delete()
+        return redirect('cart_page')
+
+
+class CreateCartCheckoutSessionView(View):
+    def post(self, request):
+        SCOPE_PRICE_USD = 100
+        user_id = request.session.get('user_registry_id')
+        scopes = UserCart.objects.filter(user_id=user_id)
+        total_amount = len(scopes) * SCOPE_PRICE_USD
+
+        if not scopes:
+            return redirect('cart_page')
+
+        # Optional: get email if needed
+        user_email = None
+        try:
+            user = User.objects.get(user_registry_id=user_id)
+            user_email = user.email
+        except User.DoesNotExist:
+            pass
+
+        session = stripe.checkout.Session.create(
+            line_items=[{
+                'price_data': {
+                    'currency': 'usd',
+                    'unit_amount': int(total_amount * 100),
+                    'product_data': {
+                        'name': f'{len(scopes)} Scope(s)',
+                    },
+                },
+                'quantity': 1,
+            }],
+            mode='payment',
+            success_url=f"http://127.0.0.1:8000/api/cart-payment-success/?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url="http://127.0.0.1:8000/api/cancel/",
+            customer_email=user_email
+        )
+
+        request.session['cart_payment'] = {'user_id': str(user_id)}
+        return redirect(session.url)
+
+
+class CartPaymentSuccessView(View):
+    def get(self, request):
+        user_id = request.session.get('user_registry_id')
+        scopes = UserCart.objects.filter(user_id=user_id)
+
+        for item in scopes:
+            UserScope.objects.create(
+                user_id=user_id,
+                scope_name=item.scope_name,
+                active=True
+            )
+
+        scopes.delete()
+        return redirect('cart_page')

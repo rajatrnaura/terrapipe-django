@@ -280,10 +280,10 @@ class ProductPlan(models.Model):
     name = models.CharField(max_length=20, choices=PLAN_CHOICES, unique=True)
     price = models.DecimalField(max_digits=6, decimal_places=2, default=0.00)
     description = models.TextField(blank=True, null=True)
-    features = models.JSONField(default=list)  # Example: ["Access to one scope", "Unlimited fields"]
+    features = models.JSONField(default=list)
 
     def __str__(self):
-        return f"{self.get_name_display()} - ${self.price}/month"
+        return f"{self.get_name_display()} - ${self.price}/year"
 
 
 class UserSubscription(models.Model):
@@ -299,7 +299,7 @@ class UserSubscription(models.Model):
         self.plan = plan
         self.start_date = timezone.now()
         if plan.name != 'free':
-            self.end_date = timezone.now() + timedelta(days=30)
+            self.end_date = timezone.now() + timedelta(days=365)
         else:
             self.end_date = None
         self.active = True
@@ -320,7 +320,7 @@ def default_start_date():
 
 
 def default_end_date():
-    return timezone.now() + timedelta(days=30)
+    return timezone.now() + timedelta(days=365)
 
 
 class UserCart(models.Model):
