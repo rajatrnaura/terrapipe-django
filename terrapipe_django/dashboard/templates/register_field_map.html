@@ -68,6 +68,9 @@
   <!-- Manual WKT Input -->
   <textarea id="manual-wkt" placeholder="Paste WKT here (optional)" rows="4"></textarea>
 
+  <!-- GeoJSON Upload Input -->
+  <input type="file" id="geojson-upload" accept=".json" />
+
   <div style="display:flex; justify-content:space-between;">
     <button onclick="fetchField()">Fetch</button>
     <button onclick="registerField()">Register</button>
@@ -116,7 +119,6 @@ L.Control.geocoder({ defaultMarkGeocode: false })
   })
   .addTo(map);
 
-// Restore last polygon if available
 const lastGeoJson = localStorage.getItem('lastGeoJson');
 if (lastGeoJson) {
   try {
@@ -169,28 +171,67 @@ function renderJSONTree(data, parent) {
   parent.appendChild(ul);
 }
 
+function geoJsonToWkt(geometry) {
+  if (geometry.type === 'Polygon') {
+    const rings = geometry.coordinates[0].map(([lng, lat]) => `${lng} ${lat}`).join(',');
+    return `POLYGON((${rings}))`;
+  }
+  alert("Only Polygon geometries are supported.");
+  return null;
+}
+
 function registerField() {
   const loader = document.getElementById('loader');
   loader.style.display = 'flex';
 
   const s2 = document.getElementById('s2_index').value || "8,13";
   const manualInput = document.getElementById('manual-wkt').value.trim();
-  let wkt = manualInput || document.getElementById('wkt-output').innerText.replace(/^WKT:\s*/, '').trim();
+  const geojsonFile = document.getElementById('geojson-upload').files[0];
 
-  const payload = {
-    wkt: wkt,
-    threshold: 90,
-    s2_index: s2,
-    resolution_level: 13
-  };
+  let wktPromise;
 
-  fetch('/register-field-boundary/', {
-    method: 'POST',
-    headers: {
-  'Content-Type': 'application/json',
-  'Authorization': 'Bearer ' + localStorage.getItem('access_token')
-  },
-    body: JSON.stringify(payload)
+  if (geojsonFile) {
+    wktPromise = new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        try {
+          const json = JSON.parse(event.target.result);
+          if (json.features && json.features.length > 0) {
+            const geometry = json.features[0].geometry;
+            const wkt = geoJsonToWkt(geometry);
+            if (wkt) resolve(wkt);
+            else reject("Invalid geometry.");
+          } else {
+            reject("No features found in GeoJSON.");
+          }
+        } catch (err) {
+          reject("Invalid GeoJSON file.");
+        }
+      };
+      reader.onerror = () => reject("File reading failed.");
+      reader.readAsText(geojsonFile);
+    });
+  } else {
+    const wkt = manualInput || document.getElementById('wkt-output').innerText.replace(/^WKT:\s*/, '').trim();
+    wktPromise = Promise.resolve(wkt);
+  }
+
+  wktPromise.then((wkt) => {
+    const payload = {
+      wkt: wkt,
+      threshold: 90,
+      s2_index: s2,
+      resolution_level: 13
+    };
+
+    return fetch('/register-field-boundary/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + localStorage.getItem('access_token')
+      },
+      body: JSON.stringify(payload)
+    });
   })
   .then(response => response.json().then(data => ({ ok: response.ok, body: data })))
   .then(({ ok, body }) => {
@@ -200,7 +241,6 @@ function registerField() {
 
     if (ok) {
       localStorage.setItem('lastGeoJson', JSON.stringify(body["Geo JSON"]));
-
       document.getElementById('response-geo-id').innerText = `Geo Id: ${body["Geo Id"]}`;
       const geoJsonContainer = document.getElementById('response-geo-json');
       geoJsonContainer.innerHTML = '';
