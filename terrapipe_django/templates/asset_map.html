@@ -166,6 +166,17 @@
     line-height: 1.5;
   }
 
+  .map-label {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    font-size: 14px;
+    font-weight: bold;
+    color: #2f2f2f;
+    text-shadow: 1px 1px 2px white;
+    pointer-events: none;
+  }
+
 </style>
 
 <div id="map-container">
@@ -179,27 +190,40 @@
   </div>
 </div>
 
-<!-- Alert for delete -->
 <div id="delete-alert"></div>
 
-<!-- Search Bar -->
 <div class="search-overlay">
   <div class="input-group">
     <input id="searchGeoID" type="text" class="form-control" placeholder="Search GeoID..." />
   </div>
 </div>
 
-<!-- Leaflet -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
 
 <script>
-  const map = L.map("map").setView([30.9, 76.8], 8);
-  L.tileLayer("https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}", {
-    maxZoom: 20,
-    subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
-    attribution: "Map by Google"
-  }).addTo(map);
+  const map = L.map("map").setView([30.9, 76.8], 13);
+
+  const esriSatellite = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: '© Esri, DigitalGlobe, GeoEye',
+      maxZoom: 20
+    }
+  ).addTo(map);
+
+  const esriLabels = L.tileLayer(
+    'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+      attribution: '© Esri Labels',
+      maxZoom: 20
+    }
+  ).addTo(map);
+
+  const esriBoundaries = L.tileLayer(
+    'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Reference_Overlay/MapServer/tile/{z}/{y}/{x}', {
+      attribution: '© Esri Boundaries',
+      maxZoom: 20
+    }
+  ).addTo(map);
 
   const fieldBoundsMap = {};
   const fieldLayers = {};
@@ -219,8 +243,22 @@
     if (!data.raw_geojson || !data.raw_geojson.geometry) return;
 
     const userFieldId = data.user_field_id;
+    const labelText = data.field_name || geoid;
+
     const geoLayer = L.geoJSON(data.raw_geojson, {
-      style: { color: '#00ff99', weight: 2 }
+      style: { color: '#00ff99', weight: 2 },
+      onEachFeature: function (feature, layer) {
+        const center = layer.getBounds().getCenter();
+        const label = L.tooltip({
+          permanent: true,
+          direction: 'center',
+          className: 'map-label'
+        })
+        .setContent(labelText)
+        .setLatLng(center);
+
+        map.addLayer(label);
+      }
     }).addTo(map);
 
     fieldLayers[geoid] = geoLayer;
@@ -257,7 +295,7 @@
       scrollWheelZoom: false
     });
 
-    L.tileLayer("https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}", {
+    L.tileLayer("https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}", {
       maxZoom: 20,
       subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
     }).addTo(miniMap);
@@ -300,8 +338,6 @@
       });
 
       const result = await res.json();
-      console.log("DELETE result:", result);
-
       if (result.success) {
         if (fieldLayers[geoid]) {
           map.removeLayer(fieldLayers[geoid]);
@@ -323,7 +359,7 @@
       }
     } catch (err) {
       console.error("Delete error:", err);
-      alert("An error occurred while deleting the field. Check console for details.");
+      alert("An error occurred while deleting the field.");
     }
   }
 
@@ -382,4 +418,5 @@
 
   loadGeoIDs();
 </script>
+
 {% endblock %}

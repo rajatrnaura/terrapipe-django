@@ -167,25 +167,42 @@
   }
 
   .leaflet-tooltip.custom-tooltip {
-  background: transparent;
-  border: none;
-  box-shadow: none;
+    background: transparent;
+    border: none;
+    box-shadow: none;
   }
 
   .leaflet-tooltip.custom-tooltip button {
-  background-color: #4B4BED;
-  color: white;
-  border: none;
-  border-radius: 12px;
-  padding: 5px 10px;
-  font-size: 13px;
-  cursor: pointer;
+    background-color: #4B4BED;
+    color: white;
+    border: none;
+    border-radius: 12px;
+    padding: 5px 10px;
+    font-size: 13px;
+    cursor: pointer;
   }
 
+  .location-label {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    z-index: 1000;
+    background-color: rgba(255, 255, 255, 0.9);
+    padding: 8px 15px;
+    border-radius: 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    font-size: 14px;
+    font-weight: bold;
+    max-width: 300px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 </style>
 
 <div id="map-container">
   <div id="map"></div>
+  <div id="location-label" class="location-label" style="display: none;"></div>
 
   <div id="field-sidebar">
     <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -220,6 +237,56 @@
   const fieldBoundsMap = {};
   const fieldLayers = {};
   let activeHighlightLayer = null;
+  const locationLabel = document.getElementById("location-label");
+
+  // Function to update location label
+  function updateLocationLabel(lat, lng, name = '') {
+    if (!lat || !lng) {
+      locationLabel.style.display = 'none';
+      return;
+    }
+    
+    // Reverse geocoding to get location name (using Nominatim)
+    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+      .then(response => response.json())
+      .then(data => {
+        let locationName = '';
+        
+        if (name && name !== '') {
+          locationName = name;
+        } else if (data.address) {
+          // Construct a readable address from the response
+          const addr = data.address;
+          locationName = [
+            addr.village || addr.town || addr.city,
+            addr.state,
+            addr.country
+          ].filter(Boolean).join(', ');
+        }
+        
+        if (locationName) {
+          locationLabel.textContent = locationName;
+          locationLabel.style.display = 'block';
+        } else {
+          locationLabel.style.display = 'none';
+        }
+      })
+      .catch(error => {
+        console.error('Geocoding error:', error);
+        if (name && name !== '') {
+          locationLabel.textContent = name;
+          locationLabel.style.display = 'block';
+        } else {
+          locationLabel.style.display = 'none';
+        }
+      });
+  }
+
+  // Update location label on map move
+  map.on('moveend', function() {
+    const center = map.getCenter();
+    updateLocationLabel(center.lat, center.lng);
+  });
 
   async function loadGeoIDs() {
     const res = await fetch("/geoids/");
@@ -230,36 +297,40 @@
   }
 
   async function loadFieldBoundary(geoid, addToSidebar = false, shouldZoom = false) {
-  const res = await fetch(`/field-boundary/${geoid}/`);
-  const data = await res.json();
-  if (!data.raw_geojson || !data.raw_geojson.geometry) return;
+    const res = await fetch(`/field-boundary/${geoid}/`);
+    const data = await res.json();
+    if (!data.raw_geojson || !data.raw_geojson.geometry) return;
 
-  const userFieldId = data.user_field_id;
+    const userFieldId = data.user_field_id;
+    const fieldName = data.field_name || geoid;
 
-  // Create field boundary layer
-  const geoLayer = L.geoJSON(data.raw_geojson, {
-    style: { color: '#00ff99', weight: 2 }
-  }).addTo(map);
+    // Create field boundary layer
+    const geoLayer = L.geoJSON(data.raw_geojson, {
+      style: { color: '#00ff99', weight: 2 }
+    }).addTo(map);
 
-  // Add click event for "Access Data" tooltip
-  geoLayer.on('click', function (e) {
-    const tooltip = L.tooltip({
-      permanent: false,
-      direction: 'top',
-      className: 'custom-tooltip'
-    })
-    .setLatLng(e.latlng)
-    .setContent('<button class="btn btn-primary btn-sm">Access Data</button>')
-    .addTo(map);
-  });
+    // Add click event for "Access Data" tooltip and location name
+    geoLayer.on('click', function (e) {
+      updateLocationLabel(e.latlng.lat, e.latlng.lng, fieldName);
+      
+      const tooltip = L.tooltip({
+        permanent: false,
+        direction: 'top',
+        className: 'custom-tooltip'
+      })
+      .setLatLng(e.latlng)
+      .setContent('<button class="btn btn-primary btn-sm">Access Data</button>')
+      .addTo(map);
+    });
 
-  fieldLayers[geoid] = geoLayer;
-  const bounds = geoLayer.getBounds();
-  fieldBoundsMap[geoid] = bounds;
+    fieldLayers[geoid] = geoLayer;
+    const bounds = geoLayer.getBounds();
+    fieldBoundsMap[geoid] = bounds;
 
-  if (shouldZoom) {
-    map.fitBounds(bounds, { padding: [30, 30] });
-  }
+    if (shouldZoom) {
+      map.fitBounds(bounds, { padding: [30, 30] });
+      updateLocationLabel(bounds.getCenter().lat, bounds.getCenter().lng, fieldName);
+    }
 
     if (!addToSidebar) return;
 
@@ -271,10 +342,10 @@
     card.className = "field-card";
     card.innerHTML = `
       <div id="${cardId}" class="leaflet-mini mb-2"></div>
-      <div class="field-id fw-bold">${data.field_name || geoid}</div>
+      <div class="field-id fw-bold">${fieldName}</div>
       <div class="field-id text-muted">${geoid}</div>
       <div class="d-flex justify-content-between mt-2">
-        <button class="btn btn-fetch btn-sm" onclick="zoomTo('${geoid}')">Fetch Field</button>
+        <button class="btn btn-fetch btn-sm" onclick="zoomTo('${geoid}', '${fieldName.replace(/'/g, "\\'")}')">Fetch Field</button>
         <button class="btn btn-delete btn-sm" onclick="deleteField('${userFieldId}', '${geoid}')">Delete</button>
       </div>
     `;
@@ -299,42 +370,11 @@
     });
   }
 
-  async function loadSelectedField(geoid) {
-  const res = await fetch(`/field-boundary/${geoid}/`);
-  const data = await res.json();
-  if (!data.raw_geojson || !data.raw_geojson.geometry) return;
-
-  // Create the field boundary
-  activeHighlightLayer = L.geoJSON(data.raw_geojson, {
-    style: { color: 'yellow', weight: 5, dashArray: '6,4' }
-  }).addTo(map);
-
-  // Fit the map to the selected field
-  const bounds = activeHighlightLayer.getBounds();
-  map.fitBounds(bounds, { padding: [30, 30] });
-
-  // Add click event for Access Data tooltip
-  activeHighlightLayer.on('click', function (e) {
-    if (window.activeTooltip) {
-      map.removeLayer(window.activeTooltip);
-    }
-
-    const tooltip = L.tooltip({
-      permanent: false,
-      direction: 'top',
-      className: 'custom-tooltip'
-    })
-    .setLatLng(e.latlng)
-    .setContent('<button class="btn btn-primary btn-sm">Access Data</button>')
-    .addTo(map);
-
-    window.activeTooltip = tooltip;
-  });
-  }
-
-  function zoomTo(geoid) {
+  function zoomTo(geoid, fieldName = '') {
     if (fieldBoundsMap[geoid]) {
-      map.fitBounds(fieldBoundsMap[geoid], { padding: [30, 30] });
+      const bounds = fieldBoundsMap[geoid];
+      map.fitBounds(bounds, { padding: [30, 30] });
+      updateLocationLabel(bounds.getCenter().lat, bounds.getCenter().lng, fieldName);
 
       // Remove previous highlight layer
       if (activeHighlightLayer) {
@@ -357,6 +397,8 @@
             map.removeLayer(window.activeTooltip);
           }
 
+          updateLocationLabel(e.latlng.lat, e.latlng.lng, fieldName);
+
           const tooltip = L.tooltip({
             permanent: false,
             direction: 'top',
@@ -373,8 +415,6 @@
       alert("No bounds found for this field.");
     }
   }
-
-
 
   async function deleteField(userFieldId, geoid) {
     if (!confirm("Are you sure you want to delete this field?")) return;
@@ -434,6 +474,7 @@
 
     const bounds = searchLayer.getBounds();
     map.fitBounds(bounds, { padding: [30, 30] });
+    updateLocationLabel(bounds.getCenter().lat, bounds.getCenter().lng, data.field_name || geoid);
 
     fieldLayers["__search"] = searchLayer;
   }

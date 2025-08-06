@@ -24,7 +24,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-+)ir4dv0dv%_o6refv86o&w003yum-#+q0=)whh1*vrb0#9()p'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 
 ALLOWED_HOSTS = ['eta.terrapipe.io','*']
 
@@ -54,7 +54,10 @@ MIDDLEWARE = [
 TP_SECRET_KEY = '4h%ji1srx2lx7gahi@=z5*len0-7nf*(h1$3uj$pdeh3^0i=-3' 
 ROOT_URLCONF = 'terrapipe_django.urls'
 
-BASE_DIR = '/home/app-user/webapps/terrapipe-django/terrapipe_django/'
+# BASE_DIR = '/home/adminweb/Rnaura/terrapipe-django/terrapipe_django/'
+BASE_DIR = Path(__file__).resolve().parent.parent
+print(BASE_DIR)
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -147,9 +150,11 @@ USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = '/static/'
+
 STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, 'static'),
+    os.path.join(BASE_DIR, 'terrapipe_django/static'),
 ]
+
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # Media files (optional, if you use user-uploaded files)

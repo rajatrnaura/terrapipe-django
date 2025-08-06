@@ -65,10 +65,7 @@
     <option>Automated</option>
   </select>
 
-  <!-- Manual WKT Input -->
   <textarea id="manual-wkt" placeholder="Paste WKT here (optional)" rows="4"></textarea>
-
-  <!-- GeoJSON Upload Input -->
   <input type="file" id="geojson-upload" accept=".json" />
 
   <div style="display:flex; justify-content:space-between;">
@@ -92,11 +89,52 @@
 <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
 
 <script>
-const map = L.map('map').setView([28.6139, 77.2090], 16);
-L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-  attribution: '© Esri Imagery'
+const map = L.map('map', {
+  minZoom: 1,
+  maxZoom: 18,
+  center: [28.6139, 77.2090], // Default fallback
+  zoom: 2
+});
+
+// Use geolocation to center the map
+if (navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const lat = position.coords.latitude;
+      const lon = position.coords.longitude;
+      map.setView([lat, lon], 11);
+    },
+    () => {
+      console.warn('Geolocation permission denied or not available.');
+    }
+  );
+} else {
+  console.warn('Geolocation is not supported by this browser.');
+}
+
+
+// Satellite Layer
+const esriSatellite = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '© Esri, DigitalGlobe, GeoEye, Earthstar Geographics',
+    maxZoom: 20
 }).addTo(map);
 
+// Label Layer (city, district, state names)
+const esriLabels = L.tileLayer(
+  'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '© Esri Boundaries',
+    maxZoom: 20
+}).addTo(map);
+
+// Optional: Boundary outlines
+const esriBoundaries = L.tileLayer(
+  'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Reference_Overlay/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '© Esri Admin Boundaries',
+    maxZoom: 20
+}).addTo(map);
+
+// Drawing setup
 const drawnItems = new L.FeatureGroup();
 map.addLayer(drawnItems);
 
@@ -113,23 +151,13 @@ const drawControl = new L.Control.Draw({
 });
 map.addControl(drawControl);
 
+// Geocoder
 L.Control.geocoder({ defaultMarkGeocode: false })
   .on('markgeocode', function(e) {
     map.fitBounds(e.geocode.bbox);
   })
   .addTo(map);
 
-const lastGeoJson = localStorage.getItem('lastGeoJson');
-if (lastGeoJson) {
-  try {
-    const geoLayer = L.geoJSON(JSON.parse(lastGeoJson), {
-      style: { color: '#ffa500', weight: 3, opacity: 0.9, fillOpacity: 0.4 }
-    }).addTo(drawnItems);
-    map.fitBounds(geoLayer.getBounds());
-  } catch (e) {
-    console.warn('Invalid GeoJSON in localStorage');
-  }
-}
 
 map.on('draw:created', function (e) {
   const layer = e.layer;
@@ -144,6 +172,15 @@ map.on('draw:created', function (e) {
 
 function fetchField() {
   alert("You can implement field fetch using S2 index or field name.");
+}
+
+function geoJsonToWkt(geometry) {
+  if (geometry.type === 'Polygon') {
+    const rings = geometry.coordinates[0].map(([lng, lat]) => `${lng} ${lat}`).join(',');
+    return `POLYGON((${rings}))`;
+  }
+  alert("Only Polygon geometries are supported.");
+  return null;
 }
 
 function renderJSONTree(data, parent) {
@@ -171,15 +208,6 @@ function renderJSONTree(data, parent) {
   parent.appendChild(ul);
 }
 
-function geoJsonToWkt(geometry) {
-  if (geometry.type === 'Polygon') {
-    const rings = geometry.coordinates[0].map(([lng, lat]) => `${lng} ${lat}`).join(',');
-    return `POLYGON((${rings}))`;
-  }
-  alert("Only Polygon geometries are supported.");
-  return null;
-}
-
 function registerField() {
   const loader = document.getElementById('loader');
   loader.style.display = 'flex';
@@ -187,6 +215,12 @@ function registerField() {
   const s2 = document.getElementById('s2_index').value || "8,13";
   const manualInput = document.getElementById('manual-wkt').value.trim();
   const geojsonFile = document.getElementById('geojson-upload').files[0];
+//   const osm = L.tileLayer(
+//   'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+//     attribution: '&copy; OpenStreetMap contributors',
+//     maxZoom: 19
+//   }
+// ).addTo(map);
 
   let wktPromise;
 
@@ -281,5 +315,6 @@ function registerField() {
   });
 }
 </script>
+
 </body>
 </html>
