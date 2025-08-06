@@ -31,6 +31,9 @@ from django.shortcuts import render, redirect
 from django.views import View
 from .models import ProductPlan, UserSubscription
 from .models import UserCart , UserScope
+from .check_permitions import check_scope_limit
+import geopandas as gpd
+from shapely.geometry import shape, Polygon
 
 load_dotenv()
 
@@ -528,12 +531,64 @@ VALID_GEO_ID_REGEX = re.compile(r'^[a-f0-9]{64}$', re.IGNORECASE)
 #         }, status=400)
 
 
+# def get_geoids(request):
+#     try:
+#         access_token = request.session.get('access_token')
+#         if not access_token:
+#             return JsonResponse({'message': 'User not authenticated'}, status=401)
+
+#         flask_url = "https://api.terrapipe.io/geo-id"
+#         headers = {
+#             "Authorization": f"Bearer {access_token}"
+#         }
+
+#         response = requests.get(flask_url, headers=headers, timeout=10)
+
+#         if response.status_code == 200:
+#             data = response.json()
+#             geo_ids_raw = data.get("geo_ids", [])
+
+#             geo_ids = list({
+#                 geo_id for geo_id, _, _ in geo_ids_raw
+#                 if geo_id and VALID_GEO_ID_REGEX.fullmatch(geo_id)
+#             })
+
+#             if not geo_ids:
+#                 return JsonResponse({'message': 'No valid Geo Ids found.'}, status=404)
+
+#             return JsonResponse({
+#                 'message': 'Geo Ids fetched successfully',
+#                 'geoids': geo_ids
+#             }, status=200)
+
+#         else:
+#             return JsonResponse({
+#                 'message': 'Failed to fetch geo ids from Flask',
+#                 'error': response.json().get("message", "Unknown error")
+#             }, status=response.status_code)
+
+#     except Exception as e:
+#         return JsonResponse({
+#             'message': 'Error while fetching geo ids',
+#             'error': str(e)
+#         }, status=500)
+
 def get_geoids(request):
     try:
         access_token = request.session.get('access_token')
+        user_id = request.session.get('user_registry_id')
+
         if not access_token:
             return JsonResponse({'message': 'User not authenticated'}, status=401)
 
+        # Get user subscription
+        subscription = UserSubscription.objects.filter(user_id=user_id, active=True).order_by('-start_date').first()
+        if not subscription:
+            return JsonResponse({'message': 'No active subscription found'}, status=403)
+
+        plan_name = subscription.plan.name.lower()
+
+        # Call Flask API
         flask_url = "https://api.terrapipe.io/geo-id"
         headers = {
             "Authorization": f"Bearer {access_token}"
@@ -552,6 +607,9 @@ def get_geoids(request):
 
             if not geo_ids:
                 return JsonResponse({'message': 'No valid Geo Ids found.'}, status=404)
+
+            if plan_name == 'free':
+                geo_ids = geo_ids[:1]
 
             return JsonResponse({
                 'message': 'Geo Ids fetched successfully',
@@ -827,7 +885,7 @@ def get_scopes_bb(request):
             'error': str(e)
         }, status=500)
     
-
+@check_scope_limit
 @csrf_exempt
 def request_activation(request):
     try:
@@ -876,6 +934,7 @@ def request_activation(request):
             'error': str(e)
         }, status=500)
 
+
 @csrf_exempt
 def remove_scope(request):
     try:
@@ -918,6 +977,7 @@ def remove_scope(request):
             'error': str(e)
         }, status=500)
 
+@check_scope_limit
 @csrf_exempt
 def add_user_scope(request):
     try:
@@ -1269,7 +1329,7 @@ def payment_success(request):
 def payment_cancel(request):
     return render(request, 'cancel.html')
 
-
+@check_scope_limit
 @csrf_exempt
 def add_to_cart(request):
     if request.method != 'POST':
@@ -1371,3 +1431,71 @@ class CartPaymentSuccessView(View):
 
         scopes.delete()
         return redirect('cart_page')
+
+
+
+S2_GRID_PATH = os.path.join(os.path.dirname(__file__), "/home/rajat/Downloads/rnaura_work/terrapipe-django/terrapipe_django/Sentinel-2-Shapefile-Index-master/sentinel_2_index_shapefile.shp")
+tiles = gpd.read_file(S2_GRID_PATH)
+
+def get_tile_from_polygon(polygon):
+    tiles_reproj = tiles.to_crs("EPSG:4326")
+    intersected_tiles = tiles_reproj[tiles_reproj.intersects(polygon)]
+    return intersected_tiles['Name'].tolist() if not intersected_tiles.empty else []
+
+@csrf_exempt
+def get_tile_number(request):
+    try:
+        data = json.loads(request.body.decode("utf-8"))
+
+        polygon = None
+
+        # with cordinates
+        if "coordinates" in data:
+            coordinates = data.get("coordinates")
+            polygon = shape({"type": "Polygon", "coordinates": coordinates})
+
+        # with geoid
+        elif "geoid" in data:
+            geoid = data.get("geoid")
+
+            access_token = request.session.get("access_token")
+            if not access_token:
+                auth_header = request.headers.get("Authorization")
+                if auth_header and auth_header.startswith("Bearer "):
+                    access_token = auth_header.split(" ")[1]
+
+            if not access_token:
+                return JsonResponse({"message": "User not authenticated"}, status=401)
+
+            flask_url = f"https://api.terrapipe.io/fetch-field/{geoid}"
+            headers = {"Authorization": f"Bearer {access_token}"}
+            response = requests.get(flask_url, headers=headers, timeout=10)
+
+            if response.status_code != 200:
+                return JsonResponse({
+                    "message": "Failed to fetch field data",
+                    "error": response.json().get("message", "Unknown error")
+                }, status=response.status_code)
+
+            data_resp = response.json()
+            geojson = data_resp.get("JSON Response", {}).get("Geo JSON", {})
+            geometry = geojson.get("geometry", {})
+            coordinates = geometry.get("coordinates")
+
+            if not coordinates:
+                return JsonResponse({"message": "No coordinates found for this geoid"}, status=404)
+
+            polygon = shape({"type": geometry.get("type", "Polygon"), "coordinates": coordinates})
+
+        else:
+            return JsonResponse({"message": "Either 'coordinates' or 'geoid' must be provided"}, status=400)
+
+        if not polygon.is_valid:
+            return JsonResponse({"message": "Invalid polygon"}, status=400)
+
+        tiles_list = get_tile_from_polygon(polygon)
+
+        return JsonResponse({"tiles": tiles_list}, status=200)
+
+    except Exception as e:
+        return JsonResponse({"message": "Error while processing", "error": str(e)}, status=500)
