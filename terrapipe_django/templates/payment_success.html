@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container text-center my-5 text-white">
+    <h2>Payment Successful!</h2>
+    <p>You have successfully subscribed to the <b>{{ plan.get_name_display }}</b> plan.</p>
+    <a href="{% url 'pricing_page' %}" class="btn btn-primary">Back to Plans</a>
+</div>
+{% endblock %}

@@ -28,5 +28,15 @@ urlpatterns = [
     path("forgot_password", forgot_password, name="forgot_password"),
     path("register", signup_page, name="signup_page"),
     path("signup", signup, name="signup"),
+    path('pricing/', pricing_page, name='pricing_page'),
+    path('create-checkout-session/', CreateCheckoutSessionView.as_view(), name='create-checkout-session'),
+    path('success/', payment_success, name='payment_success'),
+    path('cancel/', payment_cancel, name='payment_cancel'),
+    path('add_to_cart/', add_to_cart, name='add_to_cart'),
+    path('cart/', CartView.as_view(), name='cart_page'),
+    path('cart/clear/', ClearCartView.as_view(), name='clear_cart'),
+    path('cart/checkout/', CreateCartCheckoutSessionView.as_view(), name='create_cart_checkout_session'),
+    path('cart-payment-success/', CartPaymentSuccessView.as_view(), name='cart_payment_success'),
+    path('get_tile_number/', get_tile_number, name='get_tile_number'),
     
 ]

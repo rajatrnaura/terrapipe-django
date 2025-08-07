@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container text-center my-5">
+  <h2 class="mb-5 text-white">Plans & Pricing</h2>
+  
+  <div class="row justify-content-center">
+    {% for plan in plans %}
+      <div class="col-md-3 mx-2">
+        <div class="card pricing-card {% if user_subscription and user_subscription.plan.id == plan.id %}highlighted{% endif %}">
+          <div class="card-body">
+            <h3 class="card-title text-light">${{ plan.price }}<span class="fs-6">/year</span></h3>
+            <h5 class="text-white">{{ plan.get_name_display }}</h5>
+            <ul class="list-unstyled text-light my-3">
+              {% for feature in plan.features %}
+                <li><i class="fa fa-check text-success"></i> {{ feature }}</li>
+              {% endfor %}
+            </ul>
+            {% if user_subscription and user_subscription.plan.id == plan.id %}
+              <button class="btn btn-secondary w-100" disabled>Current Plan</button>
+            {% else %}
+              <form action="{% url 'create-checkout-session' %}" method="post">
+                {% csrf_token %}
+                <input type="hidden" name="plan_id" value="{{ plan.id }}">
+                <button type="submit" class="btn btn-success w-100">
+                  {% if plan.name == 'free' %}Choose Free{% else %}Choose Plan{% endif %}
+                </button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<style>
+  .pricing-card {
+    background: rgba(26, 26, 46, 0.9);
+    border-radius: 15px;
+    padding: 20px;
+    transition: transform 0.3s ease;
+    min-height: 320px;
+  }
+  .pricing-card:hover {
+    transform: translateY(-10px);
+  }
+  .highlighted {
+    border: 2px solid #2ecc71;
+  }
+</style>
+{% endblock %}

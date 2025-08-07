@@ -429,34 +429,93 @@
   }
 
   // Subscribe to a scope
+  // window.subscribeScope = function(scope_name) {
+  //   showLoading();
+  //   const coords = scopeGeometries.get(scope_name);
+  //   if (!coords) {
+  //     showAlert('Error: Scope geometry not found');
+  //     hideLoading();
+  //     return;
+  //   }
+  //   console.log('Subscribing to scope:', scope_name, coords);
+  //   $.ajax({
+  //     url: '/add_user_scope/',
+  //     method: 'POST',
+  //     headers: {
+  //       'Content-Type': 'application/json'
+  //     },
+  //     data: JSON.stringify({ scope_name: scope_name, coordinates: coords }),
+  //     success: function(response) {
+  //       showAlert(`${scope_name} subscribed successfully`, true);
+  //       fetchScopeStatus();
+  //     },
+  //     error: function(xhr) {
+  //       console.error('Subscribe error:', xhr.responseJSON);
+  //       showAlert(xhr.responseJSON?.error || 'Error subscribing to scope');
+  //     },
+  //     complete: hideLoading
+  //   });
+  // };
   window.subscribeScope = function(scope_name) {
     showLoading();
+
     const coords = scopeGeometries.get(scope_name);
     if (!coords) {
       showAlert('Error: Scope geometry not found');
       hideLoading();
       return;
     }
-    console.log('Subscribing to scope:', scope_name, coords);
+
+    const USER_ID = "{{ request.session.user_registry_id|default:'' }}";
+    if (!USER_ID) {
+      console.error("USER_ID is not set in template");
+      showAlert('User ID is missing');
+      hideLoading();
+      return;
+    }
+
+    console.log("Adding to cart and subscribing to scope:", scope_name);
+
+     //Add to cart
     $.ajax({
-      url: '/add_user_scope/',
+      url: '/add_to_cart/',
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      data: JSON.stringify({ scope_name: scope_name, coordinates: coords }),
-      success: function(response) {
-        showAlert(`${scope_name} subscribed successfully`, true);
-        fetchScopeStatus();
+      headers: { 'Content-Type': 'application/json' },
+      data: JSON.stringify({ scope_name: scope_name, user_id: USER_ID }),
+      success: function(cartResponse) {
+        console.log("Add to cart response:", cartResponse);
+        if (cartResponse.status === 'already_added') {
+          showAlert(`${scope_name} is already in cart`);
+        } else {
+          showAlert(`${scope_name} added to cart`, true);
+        }
+
+        //Subscribe to user scope
+        $.ajax({
+          url: '/add_user_scope/',
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          data: JSON.stringify({ scope_name: scope_name, coordinates: coords }),
+          success: function(scopeResponse) {
+            console.log("Subscribe scope success:", scopeResponse);
+            showAlert(`${scope_name} subscribed successfully`, true);
+            fetchScopeStatus();
+          },
+          error: function(xhr) {
+            console.error('Subscribe error:', xhr.responseJSON);
+            showAlert(xhr.responseJSON?.error || 'Error subscribing to scope');
+          },
+          complete: hideLoading
+        });
+
       },
       error: function(xhr) {
-        console.error('Subscribe error:', xhr.responseJSON);
-        showAlert(xhr.responseJSON?.error || 'Error subscribing to scope');
-      },
-      complete: hideLoading
+        console.error('Add to cart error:', xhr.responseText);
+        showAlert(xhr.responseJSON?.message || 'Error adding scope to cart');
+        hideLoading();
+      }
     });
   };
-
   // Unsubscribe from a scope
   window.unsubscribeScope = function(scope_name) {
     showLoading();
@@ -481,32 +540,93 @@
   };
 
   // Request scope activation
-  window.requestActivation = function(scope_name) {
-    showLoading();
-    const coords = scopeGeometries.get(scope_name);
-    if (!coords) {
-      showAlert('Error: Scope geometry not found');
+  // window.requestActivation = function(scope_name) {
+  //   showLoading();
+  //   const coords = scopeGeometries.get(scope_name);
+  //   if (!coords) {
+  //     showAlert('Error: Scope geometry not found');
+  //     hideLoading();
+  //     return;
+  //   }
+  //   console.log('Requesting activation for scope:', scope_name, coords);
+  //   $.ajax({
+  //     url: '/request-activation/',
+  //     method: 'POST',
+  //     headers: {
+  //       'Content-Type': 'application/json'
+  //     },
+  //     data: JSON.stringify({ scope: [scope_name], coordinates: coords }),
+  //     success: function(response) {
+  //       showAlert(response.message || `${scope_name} activation requested`, true);
+  //     },
+  //     error: function(xhr) {
+  //       console.error('Activation error:', xhr.responseJSON);
+  //       showAlert(xhr.responseJSON?.error || 'Error requesting activation');
+  //     },
+  //     complete: hideLoading
+  //   });
+  // };
+
+window.requestActivation = function(scope_name) {
+  console.log("requestActivation() called with scope:", scope_name);
+  showLoading();
+
+  const coords = scopeGeometries.get(scope_name);
+  console.log("Coordinates for scope:", coords);
+
+  if (!coords) {
+    console.error('Scope geometry not found');
+    showAlert('Error: Scope geometry not found');
+    hideLoading();
+    return;
+  }
+
+  const USER_ID = "{{ request.session.user_registry_id|default:'' }}";
+  console.log("USER_ID:", USER_ID);
+
+  if (!USER_ID) {
+    console.error("USER_ID is not set in template");
+    showAlert('User ID is missing');
+    hideLoading();
+    return;
+  }
+
+  // Step 1: Add to cart
+  console.log("Proceeding to add_to_cart API...");
+  $.ajax({
+    url: '/add_to_cart/',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    data: JSON.stringify({ scope_name: scope_name, user_id: USER_ID }),
+    success: function(response) {
+      console.log("Add to cart success:", response);
+
+      // Step 2: Request activation
+      console.log("Proceeding to request_activation API...");
+      $.ajax({
+        url: '/request-activation/',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        data: JSON.stringify({ scope: scope_name, coordinates: coords }),
+        success: function(response) {
+          console.log("Request activation success:", response);
+          showAlert(response.message || `${scope_name} activation requested`, true);
+        },
+        error: function(xhr) {
+          console.error('Activation error:', xhr.responseText);
+          showAlert(xhr.responseJSON?.message || 'Error requesting activation');
+        },
+        complete: hideLoading
+      });
+
+    },
+    error: function(xhr) {
+      console.error('Add to cart error:', xhr.responseText);
+      showAlert(xhr.responseJSON?.message || 'Error adding scope to cart');
       hideLoading();
-      return;
     }
-    console.log('Requesting activation for scope:', scope_name, coords);
-    $.ajax({
-      url: '/request-activation/',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      data: JSON.stringify({ scope: [scope_name], coordinates: coords }),
-      success: function(response) {
-        showAlert(response.message || `${scope_name} activation requested`, true);
-      },
-      error: function(xhr) {
-        console.error('Activation error:', xhr.responseJSON);
-        showAlert(xhr.responseJSON?.error || 'Error requesting activation');
-      },
-      complete: hideLoading
-    });
-  };
+  });
+};
 
   // Update user scopes in sidebar
   function updateUserScopes() {

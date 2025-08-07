@@ -14,17 +14,30 @@ from .models import UserFields , Application
 from dashboard.utils.utils import Utils
 from s2_service import S2Service
 from django.http import JsonResponse
-from django.conf import settings
 from django.db import connections
 from dotenv import load_dotenv
 import os
 from shapely.geometry import Point
 from django.http import JsonResponse, HttpResponseBadRequest
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 import requests
 import jwt
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 import re
+from .models import ProductPlan, UserSubscription
+from .check_permitions import check_scope_limit
+from django.views import View
+from django.db.models import F
+from .models import UserCart , UserScope
+import re
+import stripe
+import geopandas as gpd
+import shapely
+from shapely.geometry import shape, Polygon
+from shapely.geometry import box
+from shapely.wkt import loads as load_wkt
+from shapely.geometry import Polygon
+from s2sphere import RegionCoverer, LatLng, LatLngRect, CellId
 
 
 load_dotenv()
@@ -370,6 +383,7 @@ def get_scopes_bb(request):
         }, status=500)
     
 
+@check_scope_limit
 @csrf_exempt
 def request_activation(request):
     try:
@@ -403,7 +417,7 @@ def request_activation(request):
         }
 
         response = requests.post(flask_url, headers=headers, json=payload, timeout=10)
-        # print(f"request activation : {response.json()}")
+        print(f"request activation : {response.json()}")
         if response.status_code == 200:
             return JsonResponse(response.json(), status=200)
         else:
@@ -417,6 +431,7 @@ def request_activation(request):
             'message': 'Error while requesting activation',
             'error': str(e)
         }, status=500)
+
 
 @csrf_exempt
 def remove_scope(request):
@@ -460,6 +475,7 @@ def remove_scope(request):
             'error': str(e)
         }, status=500)
 
+@check_scope_limit
 @csrf_exempt
 def add_user_scope(request):
     try:
@@ -650,7 +666,8 @@ def products_page(request):
         'token': request.COOKIES.get('access_token')
     })
 
- 
+
+
 @require_GET
 def get_user_geoids_with_details(request):
     user_registry_id_str = request.GET.get("user_id")
@@ -802,6 +819,22 @@ def get_user_geoids_with_details(request):
 #         "Geo JSON registered": Utils.get_geo_json(existing_geo_l20_wkt)
 #     })
 
+def get_s2_cells_from_polygon(polygon: Polygon, level: int = 13):
+    minx, miny, maxx, maxy = polygon.bounds
+    rect = LatLngRect.from_point_pair(
+        LatLng.from_degrees(miny, minx),
+        LatLng.from_degrees(maxy, maxx)
+    )
+
+    coverer = RegionCoverer()
+    coverer.min_level = level
+    coverer.max_level = level
+    coverer.max_cells = 500  # Adjust if needed
+
+    covering = coverer.get_covering(rect)
+    return set(str(cell_id.id()) for cell_id in covering)
+
+
 @csrf_exempt
 def register_field_boundary(request):
     if request.method != 'POST':
@@ -819,9 +852,32 @@ def register_field_boundary(request):
         if not field_wkt:
             return JsonResponse({"message": "Missing 'wkt' in request body"}, status=400)
 
-        # Get token from session
-        token = request.session.get('access_token')
+        field_polygon = load_wkt(field_wkt)
+        # field_tiles = set(get_tile_from_polygon(field_polygon))
 
+        token = request.session.get('access_token')
+        decoded = jwt.decode(token, settings.TP_SECRET_KEY, algorithms=["HS256"])
+ 
+        user_id = decoded.get("sub")
+
+        subscription  = UserSubscription.objects.get(user_id = user_id, active = True)
+        plan_name = subscription.plan.name 
+
+         # For PLUS plan, check tile containment using S2 RegionCoverer
+        if plan_name == 'plus':
+            field_cells = get_s2_cells_from_polygon(field_polygon, level=resolution_level)
+
+            active_scopes = UserScope.objects.filter(user_id=user_id, active=True)
+            scope_cells = set(scope.scope_name for scope in active_scopes)
+            # print(f'field_cells--{field_cells}')
+            # print(f'active_scopes--{active_scopes}')
+            # print(f'scope_cells--{scope_cells}')
+            if not field_cells.issubset(scope_cells):
+                return JsonResponse({
+                    "message": "Field is outside your subscribed S2 tiles."
+                }, status=403)
+
+        # Get token from session
         if not token:
             return JsonResponse({"message": "Missing access token in session"}, status=401)
 
@@ -868,3 +924,276 @@ def register_field_boundary(request):
     
 def map_view(request):
     return render(request, "register_field_map.html")
+
+stripe.api_key = settings.STRIPE_SECRET_KEY
+def pricing_page(request):
+    user_id = request.session.get('user_registry_id')
+    plans = ProductPlan.objects.all().order_by('price')
+    user_subscription = UserSubscription.objects.filter(user_id=user_id, active=True).first()
+    return render(request, 'pricing.html', {
+        'plans': plans,
+        'user_subscription': user_subscription
+    })
+
+class CreateCheckoutSessionView(View):
+    def post(self, request, *args, **kwargs):
+        user_id = request.session.get('user_registry_id')
+        plan_id = request.POST.get('plan_id')
+        plan = ProductPlan.objects.get(id=plan_id)
+
+        if user_id:
+            try:
+                user = User.objects.get(user_registry_id=user_id)
+                user_email = user.email
+            except User.DoesNotExist:
+                user_email = None
+        else:
+            user_email = None
+
+        # Free plan: Assign directly
+        if plan.name == 'free':
+            subscription, _ = UserSubscription.objects.get_or_create(user_id=user_id)
+            subscription.set_plan(plan)
+            return redirect('pricing_page')
+
+        # Get price from ProductPlan model
+        price_amount = float(plan.price)  
+
+        checkout_session = stripe.checkout.Session.create(
+            line_items=[
+                {
+                    'price_data': {
+                        'currency': 'usd',
+                        'unit_amount': int(price_amount * 100),  # Convert to cents
+                        'product_data': {
+                            'name': plan.name
+                        }
+                    },
+                    'quantity': 1
+                }
+            ],
+            mode='payment',
+            success_url=f'http://127.0.0.1:8000/api/success/?session_id={{CHECKOUT_SESSION_ID}}&plan_id={plan.id}',
+            cancel_url='http://127.0.0.1:8000/api/cancel/',
+            customer_email=user_email,
+        )
+
+        # Reuse or create subscription
+        subscription = UserSubscription.objects.filter(user_id=user_id).first()
+        if subscription:
+            subscription.plan = plan
+            subscription.stripe_payment_id = checkout_session.id
+            subscription.active = False
+            subscription.save()
+        else:
+            subscription = UserSubscription.objects.create(
+                user_id=user_id,
+                plan=plan,
+                stripe_payment_id=checkout_session.id,
+                active=False,
+            )
+
+        return redirect(checkout_session.url)
+    
+def payment_success(request):
+    session_id = request.GET.get('session_id')
+    plan_id = request.GET.get('plan_id')
+    user_id = request.session.get('user_registry_id')
+
+    if not user_id:
+        return redirect('login_page')
+
+    try:
+        plan = ProductPlan.objects.get(id=plan_id)
+    except ProductPlan.DoesNotExist:
+        return redirect('pricing_page')
+
+    # Find the subscription with the stripe session id
+    subscription = UserSubscription.objects.filter(
+        user_id=user_id, stripe_payment_id=session_id
+    ).first()
+
+    if subscription:
+        subscription.set_plan(plan)
+    else:
+        subscription = UserSubscription.objects.create(
+            user_id=user_id, plan=plan, stripe_payment_id=session_id
+        )
+        subscription.set_plan(plan)
+
+    return render(request, 'payment_success.html', {'plan': plan})
+
+
+def payment_cancel(request):
+    return render(request, 'cancel.html')
+
+@check_scope_limit
+@csrf_exempt
+def add_to_cart(request):
+    if request.method != 'POST':
+        return JsonResponse({'message': 'Method not allowed'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        user_id = data.get('user_id')
+        scope_name = data.get('scope_name')
+
+        if not user_id or not scope_name:
+            return JsonResponse({'message': 'Missing parameters'}, status=400)
+
+        exists = UserCart.objects.filter(user_id=user_id, scope_name=scope_name).exists()
+        if exists:
+            return JsonResponse({'message': f'{scope_name} is already in cart'}, status=200)
+
+        # Add to cart
+        UserCart.objects.create(user_id=user_id, scope_name=scope_name)
+        return JsonResponse({'message': f'{scope_name} added to cart'}, status=201)
+
+    except json.JSONDecodeError:
+        return JsonResponse({'message': 'Invalid JSON data'}, status=400)
+    except Exception as e:
+        return JsonResponse({'message': 'Error adding scope to cart', 'error': str(e)}, status=500)
+
+
+
+
+class CartView(View):
+    def get(self, request):
+        SCOPE_PRICE_USD = 100
+        user_id = request.session.get('user_registry_id')
+        if not user_id:
+            return redirect('login')
+
+        scopes = UserCart.objects.filter(user_id=user_id)
+        total_price = len(scopes) * SCOPE_PRICE_USD
+        return render(request, 'cart_payment.html', {'scopes': scopes, 'total': total_price , 'SCOPE_PRICE_USD':SCOPE_PRICE_USD})
+
+
+class ClearCartView(View):
+    def post(self, request):
+        user_id = request.session.get('user_registry_id')
+        UserCart.objects.filter(user_id=user_id).delete()
+        return redirect('cart_page')
+
+
+class CreateCartCheckoutSessionView(View):
+    def post(self, request):
+        SCOPE_PRICE_USD = 100
+        user_id = request.session.get('user_registry_id')
+        scopes = UserCart.objects.filter(user_id=user_id)
+        total_amount = len(scopes) * SCOPE_PRICE_USD
+
+        if not scopes:
+            return redirect('cart_page')
+
+        # Optional: get email if needed
+        user_email = None
+        try:
+            user = User.objects.get(user_registry_id=user_id)
+            user_email = user.email
+        except User.DoesNotExist:
+            pass
+
+        session = stripe.checkout.Session.create(
+            line_items=[{
+                'price_data': {
+                    'currency': 'usd',
+                    'unit_amount': int(total_amount * 100),
+                    'product_data': {
+                        'name': f'{len(scopes)} Scope(s)',
+                    },
+                },
+                'quantity': 1,
+            }],
+            mode='payment',
+            success_url=f"http://127.0.0.1:8000/cart-payment-success/?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url="http://127.0.0.1:8000/cancel/",
+            customer_email=user_email
+        )
+
+        request.session['cart_payment'] = {'user_id': str(user_id)}
+        return redirect(session.url)
+
+
+class CartPaymentSuccessView(View):
+    def get(self, request):
+        user_id = request.session.get('user_registry_id')
+        scopes = UserCart.objects.filter(user_id=user_id)
+
+        for item in scopes:
+            UserScope.objects.create(
+                user_id=user_id,
+                scope_name=item.scope_name,
+                active=True
+            )
+
+        scopes.delete()
+        return redirect('cart_page')
+
+
+
+S2_GRID_PATH = os.path.join(os.path.dirname(__file__), "/home/adminweb/Rnaura/terrapipe-django/terrapipe_django/Sentinel-2-Shapefile-Index-master/sentinel_2_index_shapefile.shp")
+tiles = gpd.read_file(S2_GRID_PATH)
+
+def get_tile_from_polygon(polygon):
+    tiles_reproj = tiles.to_crs("EPSG:4326")
+    intersected_tiles = tiles_reproj[tiles_reproj.intersects(polygon)]
+    return intersected_tiles['Name'].tolist() if not intersected_tiles.empty else []
+
+@csrf_exempt
+def get_tile_number(request):
+    try:
+        data = json.loads(request.body.decode("utf-8"))
+
+        polygon = None
+
+        # with cordinates
+        if "coordinates" in data:
+            coordinates = data.get("coordinates")
+            polygon = shape({"type": "Polygon", "coordinates": coordinates})
+
+        # with geoid
+        elif "geoid" in data:
+            geoid = data.get("geoid")
+
+            access_token = request.session.get("access_token")
+            if not access_token:
+                auth_header = request.headers.get("Authorization")
+                if auth_header and auth_header.startswith("Bearer "):
+                    access_token = auth_header.split(" ")[1]
+
+            if not access_token:
+                return JsonResponse({"message": "User not authenticated"}, status=401)
+
+            flask_url = f"https://api.terrapipe.io/fetch-field/{geoid}"
+            headers = {"Authorization": f"Bearer {access_token}"}
+            response = requests.get(flask_url, headers=headers, timeout=10)
+
+            if response.status_code != 200:
+                return JsonResponse({
+                    "message": "Failed to fetch field data",
+                    "error": response.json().get("message", "Unknown error")
+                }, status=response.status_code)
+
+            data_resp = response.json()
+            geojson = data_resp.get("JSON Response", {}).get("Geo JSON", {})
+            geometry = geojson.get("geometry", {})
+            coordinates = geometry.get("coordinates")
+
+            if not coordinates:
+                return JsonResponse({"message": "No coordinates found for this geoid"}, status=404)
+
+            polygon = shape({"type": geometry.get("type", "Polygon"), "coordinates": coordinates})
+
+        else:
+            return JsonResponse({"message": "Either 'coordinates' or 'geoid' must be provided"}, status=400)
+
+        if not polygon.is_valid:
+            return JsonResponse({"message": "Invalid polygon"}, status=400)
+
+        tiles_list = get_tile_from_polygon(polygon)
+
+        return JsonResponse({"tiles": tiles_list}, status=200)
+
+    except Exception as e:
+        return JsonResponse({"message": "Error while processing", "error": str(e)}, status=500)

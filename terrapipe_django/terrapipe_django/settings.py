@@ -24,7 +24,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-+)ir4dv0dv%_o6refv86o&w003yum-#+q0=)whh1*vrb0#9()p'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = ['eta.terrapipe.io','*']
 
@@ -78,6 +78,8 @@ TEMPLATES = [
 JWT_SECRET_KEY = 'tFV0kGlq0r48ZS-0IUFxIh1VHvh62qsSP6ZsgahTBPk'
 WSGI_APPLICATION = 'terrapipe_django.wsgi.application'
 AUTH_USER_MODEL = 'dashboard.User'
+STRIPE_SECRET_KEY = "sk_test_51RnZuMPcawMxSR3G0PS0zbUX1rcBPHPex2kZZGyFx34xlU0vj9ayhzKpwT9IrscxvwqBop3sADFb5GBOBoKPz5YH003PVCccHG"
+STRIPE_PUBLISHABLE_KEY = "REMOVED_SECRET"
 
 
 # Database
