@@ -34,6 +34,16 @@ urlpatterns = [
     path('cart/checkout/', CreateCartCheckoutSessionView.as_view(), name='create_cart_checkout_session'),
     path('cart-payment-success/', CartPaymentSuccessView.as_view(), name='cart_payment_success'),
     path('get_tile_number/', get_tile_number, name='get_tile_number'),
+    path('get_eta_daily_data/', get_eta_daily_data, name='get_eta_daily_data'),
+    path('getDailyETAStats/<str:geoid>/', eta_data_view, name='eta_data_view'),
+    path('get_eta_weekly_data/', get_eta_weekly_data, name='get_eta_weekly_data'),
+    path('getWeeklyETAStats/<str:geoid>/', eta_weekly_data_view, name='eta_weekly_data_view'),
+    path('ndvi_dates/', ndvi_dates, name='ndvi_dates'),
+    path('ndvi_dates_earlier/', ndvi_dates_earlier, name='ndvi_dates_earlier'),
+    path('ndvi_image/', ndvi_image, name='ndvi_image'),
+    path('getNDVIStats/<str:geoid>/', ndvi_image_view, name='ndvi_image_view'),
+    path('get_data_apps/', get_data_apps, name='get_data_apps'),
+    path('data_apps/', data_apps, name='data_apps'),
 
 
 ]

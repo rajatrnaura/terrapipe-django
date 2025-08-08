@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    body {
+        background: none !important;
+        background-color: #ffffff !important;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .data-wrapper {
+        max-width: 1000px;
+        margin: 40px auto;
+        text-align: center;
+    }
+    .geo-id-link {
+        word-break: break-all;
+        font-weight: 500;
+        font-size: 0.95rem;
+        color: #000407;
+    }
+    .date-picker-section {
+        margin: 20px 0;
+    }
+    select {
+        padding: 6px 12px;
+        font-size: 1rem;
+        cursor: pointer;
+
+        /* Remove native arrow */
+        appearance: none;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+
+        /* Custom arrow using SVG */
+        background: white url("data:image/svg+xml;utf8,<svg fill='black' height='10' viewBox='0 0 24 24' width='10' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/></svg>") no-repeat right 10px center;
+        background-size: 10px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+    #loader {
+        margin: 20px;
+        font-weight: bold;
+        color: #555;
+    }
+    #image-container img {
+        width: 80%;
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        margin-top: 20px;
+    }
+    .no-data {
+        color: #888;
+        font-style: italic;
+    }
+    #dateSelect {
+        width: 200px;
+        min-width: 200px;
+    }
+</style>
+
+<div class="data-wrapper">
+    <h2>Data for Geo ID:</h2>
+    <p><a href="" id="geoIdDisplay" class="geo-id-link"></a></p>
+
+    <div class="date-picker-section">
+        <select id="dateSelect" class="form-control d-inline w-auto"></select>
+    </div>
+
+    <div id="loader">Loading...</div>
+    <div id="image-container"></div>
+</div>
+
+<script>
+    const pathSegments = window.location.pathname.split('/').filter(segment => segment);
+    const geoId = pathSegments[pathSegments.length - 1]; // Last segment is the geoid
+    document.getElementById('geoIdDisplay').innerText = geoId;
+
+    const dateSelect = document.getElementById("dateSelect");
+    const loader = document.getElementById("loader");
+    const imageContainer = document.getElementById("image-container");
+
+    function showLoader(show) {
+        loader.style.display = show ? "block" : "none";
+    }
+
+    async function fetchDates() {
+        try {
+            showLoader(false);
+
+            // Show "Select Date" as default immediately on page load
+            dateSelect.innerHTML = `<option disabled selected>Select Date</option>`;
+
+            const res = await fetch(`/api/ndvi_dates?geoid=${geoId}`, {
+                headers: { 'Authorization': 'Bearer {{ request.session.access_token }}' }
+            });
+            const data = await res.json();
+
+            let dates = Array.isArray(data["JSON Response"]?.dates) 
+                ? data["JSON Response"].dates 
+                : Object.keys(data["JSON Response"]?.dates || {});
+
+            if (!dates.length) {
+                dateSelect.innerHTML = `<option disabled selected>No dates available</option>`;
+                imageContainer.innerHTML = "<p class='no-data'>No NDVI dates available</p>";
+                return;
+            }
+
+            // Sort & keep latest 10
+            dates.sort((a, b) => new Date(a) - new Date(b));
+            dates = dates.slice(-10);
+
+            // Populate dropdown
+            dateSelect.innerHTML = dates.map(d => `<option value="${d}">${d}</option>`).join('') +
+                                `<option value="load-earlier">Load Earlier Dates</option>`;
+
+            // Auto-select latest date
+            const latestDate = dates[dates.length - 1];
+            dateSelect.value = latestDate;
+
+            // Show latest date image
+            await loadImage(latestDate);
+
+        } catch (error) {
+            imageContainer.innerHTML = "<p class='no-data'>Error loading dates</p>";
+        } finally {
+            showLoader(false);
+        }
+    }
+
+    async function fetchEarlierDates(minDate) {
+        // Temporarily show loading in place of "Load Earlier Dates"
+        const loadEarlierOption = Array.from(dateSelect.options).find(opt => opt.value === "load-earlier");
+        if (loadEarlierOption) loadEarlierOption.textContent = "Loading...";
+
+        const res = await fetch(`/api/ndvi_dates_earlier?geoid=${geoId}&min_date=${minDate}`, {
+            headers: { 'Authorization': 'Bearer {{ request.session.access_token }}' }
+        });
+        const data = await res.json();
+        const newDates = Array.isArray(data["JSON Response"]?.dates) 
+            ? data["JSON Response"].dates 
+            : Object.keys(data["JSON Response"]?.dates || {});
+
+        if (newDates.length) {
+            const current = Array.from(dateSelect.options)
+                .map(o => o.value)
+                .filter(v => v && v !== "load-earlier");
+            const merged = [...newDates, ...current];
+            merged.sort((a, b) => new Date(a) - new Date(b));
+            dateSelect.innerHTML = merged.map(d => `<option value="${d}">${d}</option>`).join('') +
+                                `<option value="load-earlier">Load Earlier Dates</option>`;
+        } else {
+            alert("No earlier dates available");
+            if (loadEarlierOption) loadEarlierOption.textContent = "Load Earlier Dates";
+        }
+    }
+
+    async function loadImage(date) {
+        // Clear image & show loader in its place
+        imageContainer.innerHTML = "<p class='no-data'>Loading image...</p>";
+        showLoader(false);
+
+        const res = await fetch(`/api/ndvi_image?geoid=${geoId}&dt=${date}`, {
+            headers: { 'Authorization': 'Bearer {{ request.session.access_token }}' }
+        });
+        const data = await res.json();
+        if (data.plot) {
+            imageContainer.innerHTML = `<img src="data:image/png;base64,${data.plot}" alt="NDVI Image">`;
+        } else {
+            imageContainer.innerHTML = "<p class='no-data'>No NDVI data available for this date</p>";
+        }
+        showLoader(false);
+    }
+
+    dateSelect.addEventListener("change", function() {
+        if (this.value === "load-earlier") {
+            const earliest = dateSelect.options[0].value;
+            fetchEarlierDates(earliest);
+        } else {
+            loadImage(this.value);
+        }
+    });
+
+    // Initial load
+    fetchDates();
+</script>
+{% endblock %}

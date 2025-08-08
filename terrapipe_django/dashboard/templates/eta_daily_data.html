@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    /* Remove base.html background image */
+    body {
+        background: none !important;
+        background-color: #ffffff !important; /* plain white background */
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .data-wrapper {
+        max-width: 1000px; /* wider */
+        margin: 40px auto;
+        background: transparent; /* remove white card */
+        padding: 0; /* remove extra padding */
+        border-radius: 0; /* no rounded corners */
+        box-shadow: none; /* no shadow */
+        text-align: center;
+    }
+
+    .data-wrapper h2 {
+        font-weight: 600;
+        margin-bottom: 10px;
+    }
+
+    .geo-id-link {
+        word-break: break-all;
+        font-weight: 500;
+        font-size: 0.95rem;
+        color: #000407;
+    }
+
+    .date-picker-section {
+        margin: 20px 0;
+    }
+
+    #datePicker {
+        padding: 6px 12px;
+        font-size: 1rem;
+    }
+
+    table {
+        width: 100%;
+        margin-top: 20px;
+    }
+
+    .table th, .table td {
+        vertical-align: middle !important;
+    }
+
+    .table th {
+        background-color: #f1f1f1;
+        font-weight: 600;
+    }
+
+    .no-data {
+        color: #888;
+        font-style: italic;
+    }
+</style>
+
+<div class="data-wrapper">
+    <h2>Data for Geo ID:</h2>
+    <p>
+        <a href="" id="geoIdDisplay" class="geo-id-link"></a>
+    </p>
+
+    <div class="date-picker-section">
+        <label for="datePicker"><b>Select Date</b></label>
+        <input type="date" id="datePicker" class="form-control d-inline w-auto" />
+    </div>
+
+    <div id="dataTableContainer" style="display: none;">
+        <h4 class="mb-3">Tabular Data</h4>
+        <table class="table table-bordered text-center">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>
+                        Average actual evapotranspiration (ETa)<br>
+                        Water loss through evaporation + transpiration (inches/day)
+                    </th>
+                </tr>
+            </thead>
+            <tbody id="dataTableBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const pathSegments = window.location.pathname.split('/').filter(segment => segment);
+    const geoId = pathSegments[pathSegments.length - 1]; // Last segment is the geoid
+    document.getElementById('geoIdDisplay').innerText = geoId;
+
+    const datePicker = document.getElementById('datePicker');
+    const today = new Date();
+    today.setDate(today.getDate() - 1);
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    datePicker.value = `${yyyy}-${mm}-${dd}`;
+
+    fetchEtaData(datePicker.value);
+
+    datePicker.addEventListener('change', function () {
+        fetchEtaData(this.value);
+    });
+
+    function fetchEtaData(dateStr) {
+        fetch(`/api/get_eta_daily_data/?geoid=${geoId}&start_date=${dateStr}`, {
+            headers: { 'Authorization': 'Bearer {{ request.session.access_token }}' }
+        })
+        .then(response => response.json())
+        .then(data => {
+            const tbody = document.getElementById('dataTableBody');
+            tbody.innerHTML = '';
+
+            const etaData = data['JSON Response']?.data;
+            if (etaData && Object.keys(etaData).length > 0) {
+                for (const [date, values] of Object.entries(etaData)) {
+                    tbody.insertAdjacentHTML('beforeend', `<tr>
+                        <td>${date}</td>
+                        <td>${values.ETa__in}</td>
+                    </tr>`);
+                }
+                document.getElementById('dataTableContainer').style.display = 'block';
+            } else {
+                tbody.innerHTML = `<tr><td colspan="2" class="no-data">No data found.</td></tr>`;
+                document.getElementById('dataTableContainer').style.display = 'block';
+            }
+        })
+        .catch(() => {
+            alert("Failed to load data.");
+            document.getElementById('dataTableContainer').style.display = 'none';
+        });
+    }
+</script>
+{% endblock %}

@@ -74,6 +74,7 @@ WSGI_APPLICATION = 'terrapipe_django.wsgi.application'
 AUTH_USER_MODEL = 'dashboard.User'
 TP_SECRET_KEY = '4h%ji1srx2lx7gahi@=z5*len0-7nf*(h1$3uj$pdeh3^0i=-3'
 
+ 
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases

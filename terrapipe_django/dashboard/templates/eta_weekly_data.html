@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+
+{% block content %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    body {
+        background: none !important;
+        background-color: #ffffff !important;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .data-wrapper {
+        max-width: 1100px;
+        margin: 40px auto;
+        text-align: center;
+    }
+    .geo-id-link {
+        word-break: break-all;
+        font-weight: 500;
+        font-size: 0.95rem;
+        color: #000407;
+    }
+    .date-picker-section {
+        display: flex;
+        justify-content: center;
+        gap: 16px;
+        margin: 20px 0;
+    }
+    select, input[type="date"] {
+        padding: 6px 12px;
+        font-size: 1rem;
+    }
+    table {
+        width: 100%;
+        margin-top: 20px;
+    }
+    .table th {
+        background-color: #f1f1f1;
+        font-weight: 600;
+    }
+    .no-data {
+        color: #888;
+        font-style: italic;
+    }
+    .loading {
+        margin-top: 20px;
+    }
+    /* Make graph wider */
+    #graphContainer {
+        width: 100%;
+        max-width: none;
+        margin: 20px auto;
+        padding: 0 20px;
+    }
+    #graphCanvas {
+        width: 100% !important;
+        height: 450px !important;
+    }
+</style>
+
+<div class="data-wrapper">
+    <h2>Data for Geo ID:</h2>
+    <p><span id="geoIdDisplay" class="geo-id-link"></span></p>
+
+    <div class="date-picker-section">
+        <div>
+            <label><b>Start Date (Monday)</b></label><br>
+            <input type="date" id="startDatePicker" />
+        </div>
+        <div>
+            <label><b>End Date (Sunday)</b></label><br>
+            <input type="date" id="endDatePicker" disabled />
+        </div>
+    </div>
+
+    <div style="margin-bottom: 20px;">
+        <label for="visualizationType"><b>Visualization Type</b></label><br>
+        <select id="visualizationType">
+            <option value="graph">Graph</option>
+            <option value="json">JSON</option>
+            <option value="tabular" selected>Tabular</option>
+        </select>
+    </div>
+
+    <div id="loadingIndicator" class="loading" style="display: none;">
+        <div>Loading...</div>
+        <progress style="width: 80%;"></progress>
+    </div>
+
+    <div id="noDataMessage" class="no-data" style="display: none;"></div>
+</div>
+
+<!-- Graph container OUTSIDE wrapper for full width -->
+<div id="graphContainer" style="display: none;">
+    <h4 style="text-align:center;">Graph</h4>
+    <canvas id="graphCanvas"></canvas>
+</div>
+
+<div class="data-wrapper">
+    <div id="jsonContainer" style="display: none;">
+        <h4>JSON</h4>
+        <pre id="jsonDisplay" style="text-align: left; background: #f9f9f9; padding: 10px;"></pre>
+    </div>
+
+    <div id="tableContainer" style="display: none;">
+        <h4>Tabular Data</h4>
+        <table class="table table-bordered text-center">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>ETa (in/day)</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const pathSegments = window.location.pathname.split('/').filter(segment => segment);
+    const geoId = pathSegments[pathSegments.length - 1]; // Last segment is the geoid
+
+    document.getElementById('geoIdDisplay').innerText = geoId;
+
+    const startDatePicker = document.getElementById('startDatePicker');
+    const endDatePicker = document.getElementById('endDatePicker');
+    const visualizationType = document.getElementById('visualizationType');
+
+    const today = new Date();
+    const lastSunday = new Date(today.setDate(today.getDate() - today.getDay()));
+    const fourWeeksAgoMonday = new Date(lastSunday);
+    fourWeeksAgoMonday.setDate(fourWeeksAgoMonday.getDate() - 27);
+
+    startDatePicker.valueAsDate = fourWeeksAgoMonday;
+    endDatePicker.valueAsDate = lastSunday;
+
+    startDatePicker.addEventListener('change', () => {
+        const selected = new Date(startDatePicker.value);
+        selected.setDate(selected.getDate() - selected.getDay() + 1);
+        startDatePicker.valueAsDate = selected;
+        fetchEtaData();
+    });
+
+    visualizationType.addEventListener('change', showVisualization);
+
+    function showLoading(show) {
+        document.getElementById('loadingIndicator').style.display = show ? 'block' : 'none';
+    }
+
+    function showVisualization() {
+        document.getElementById('graphContainer').style.display = 'none';
+        document.getElementById('jsonContainer').style.display = 'none';
+        document.getElementById('tableContainer').style.display = 'none';
+
+        if (visualizationType.value === 'graph') {
+            document.getElementById('graphContainer').style.display = 'block';
+        } else if (visualizationType.value === 'json') {
+            document.getElementById('jsonContainer').style.display = 'block';
+        } else {
+            document.getElementById('tableContainer').style.display = 'block';
+        }
+    }
+
+    let etaChart = null;
+
+    function fetchEtaData() {
+        showLoading(true);
+        document.getElementById('noDataMessage').style.display = 'none';
+
+        const startDate = startDatePicker.value;
+        const endDate = endDatePicker.value;
+
+        fetch(`/api/get_eta_weekly_data/?geoid=${geoId}&start_date=${startDate}&end_date=${endDate}`, {
+            headers: { 'Authorization': 'Bearer {{ request.session.access_token }}' }
+        })
+        .then(res => res.json())
+        .then(data => {
+            showLoading(false);
+            document.getElementById('jsonDisplay').textContent = JSON.stringify(data, null, 2);
+
+            const etaData = data['JSON Response']?.data;
+            if (!etaData || Object.keys(etaData).length === 0) {
+                document.getElementById('noDataMessage').innerText =
+                    `Sorry! No data available from ${startDate} to ${endDate}.`;
+                document.getElementById('noDataMessage').style.display = 'block';
+                return;
+            }
+
+            const sortedDates = Object.keys(etaData).sort();
+
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            sortedDates.forEach(date => {
+                tbody.insertAdjacentHTML('beforeend', `
+                    <tr>
+                        <td>${date}</td>
+                        <td>${etaData[date].ETa__in.toFixed(3)}</td>
+                    </tr>
+                `);
+            });
+
+            const labels = sortedDates.map(date => {
+                const d = new Date(date);
+                return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+            });
+            const values = sortedDates.map(date => etaData[date].ETa__in);
+
+            if (etaChart) etaChart.destroy();
+
+            const ctx = document.getElementById('graphCanvas').getContext('2d');
+            etaChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'ETa (in/week)',
+                        data: values,
+                        borderColor: '#007bff',
+                        backgroundColor: 'transparent',
+                        fill: false,
+                        tension: 0,
+                        pointRadius: 5, // slightly bigger for easier hover
+                        pointHoverRadius: 7,
+                        pointBackgroundColor: '#007bff',
+                        pointBorderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    devicePixelRatio: 1.2, // sharper rendering
+                    interaction: {
+                        mode: 'index',   // triggers tooltip for the whole vertical slice
+                        intersect: false // doesn't require the cursor to touch the point
+                    },
+                    plugins: {
+                        legend: { display: true },
+                        tooltip: {
+                            usePointStyle: true,
+                            callbacks: {
+                                label: function(context) {
+                                    const date = context.label;
+                                    const eta = context.parsed.y;
+                                    return `Date: ${date}, ETa: ${eta} in/week`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { title: { display: true, text: 'Week Starting' } },
+                        y: { beginAtZero: true, title: { display: true, text: 'ETa (in/week)' } }
+                    }
+                }
+            });
+
+            showVisualization();
+        })
+        .catch(() => {
+            showLoading(false);
+            alert("Failed to load data.");
+        });
+    }
+
+    fetchEtaData();
+</script>
+{% endblock %}

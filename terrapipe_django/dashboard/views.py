@@ -399,6 +399,7 @@ def get_user_geoids(request):
 #         'products': products
 #     })
 
+
 @token_required
 def products(request):
     applications = Application.objects.all().values('id', 'root', 'description', 'picture')
@@ -1499,3 +1500,226 @@ def get_tile_number(request):
 
     except Exception as e:
         return JsonResponse({"message": "Error while processing", "error": str(e)}, status=500)
+    
+
+@csrf_exempt
+def get_eta_daily_data(request):
+    try:
+        access_token = request.session.get('access_token')
+
+        if not access_token:
+            auth_header = request.headers.get('Authorization')
+            if auth_header and auth_header.startswith('Bearer '):
+                access_token = auth_header.split(' ')[1]
+        
+        print(f"access_token : {access_token}")
+
+        if not access_token:
+            return JsonResponse({'message': 'User not authenticated'}, status=401)
+
+        user_id = request.session.get('user_registry_id')
+
+        print(f"access_token : {access_token}")
+        print(f"user_id : {user_id}")
+
+        if not user_id:
+            return JsonResponse({'message': 'User ID not found'}, status=400)
+
+        geoid = request.GET.get('geoid')
+        start_date = request.GET.get('start_date')
+        product_id = 'eta'
+        subscription_type = 'daily'
+
+        if not geoid or not start_date:
+            return JsonResponse({'message': 'Missing required parameters'}, status=400)
+
+        flask_url = (
+            f"https://api.terrapipe.io/getDailyETAEmailStats"
+            f"?geoid={geoid}&user_id={user_id}&product_id={product_id}"
+            f"&start_date={start_date}&subscription_type={subscription_type}"
+        )
+
+        print(f"flask url : {flask_url}")
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+
+        response = requests.get(flask_url, headers=headers, timeout=10)
+        print(f"response : {response.json()}")
+        if response.ok:
+            return JsonResponse(response.json(), status=200)
+        else:
+            return JsonResponse({
+                'message': 'Failed to fetch ETA data',
+                'error': response.json().get("message", "Unknown error")
+            }, status=response.status_code)
+
+    except Exception as e:
+        return JsonResponse({
+            'message': 'Error while fetching ETA data',
+            'error': str(e)
+        }, status=500)
+
+def eta_data_view(request , geoid):
+    return render(request, 'eta_daily_data.html')
+
+
+@csrf_exempt
+def get_eta_weekly_data(request):
+    try:
+        access_token = request.session.get('access_token')
+
+        if not access_token:
+            auth_header = request.headers.get('Authorization')
+            if auth_header and auth_header.startswith('Bearer '):
+                access_token = auth_header.split(' ')[1]
+        
+        if not access_token:
+            return JsonResponse({'message': 'User not authenticated'}, status=401)
+
+        user_id = request.session.get('user_registry_id') or "51a6c497-aa08-432e-a756-06c185236879"
+        if not user_id:
+            return JsonResponse({'message': 'User ID not found'}, status=400)
+
+        geoid = request.GET.get('geoid')
+        start_date = request.GET.get('start_date')
+        end_date = request.GET.get('end_date')
+        product_id = 'eta'
+
+        if not geoid or not start_date or not end_date:
+            return JsonResponse({'message': 'Missing required parameters'}, status=400)
+
+        flask_url = (
+            f"https://api.terrapipe.io/getWeeklyETAStats"
+            f"?geoid={geoid}&user_id={user_id}&product_id={product_id}"
+            f"&start_date={start_date}&end_date={end_date}"
+        )
+
+        print(f"Calling Flask URL: {flask_url}")
+
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+
+        response = requests.get(flask_url, headers=headers, timeout=15)
+        print(f"Weekly ETA API Response: {response.status_code}")
+
+        if response.ok:
+            return JsonResponse(response.json(), status=200)
+        else:
+            return JsonResponse({
+                'message': 'Failed to fetch Weekly ETA data',
+                'error': response.json().get("message", "Unknown error")
+            }, status=response.status_code)
+
+    except Exception as e:
+        return JsonResponse({
+            'message': 'Error while fetching Weekly ETA data',
+            'error': str(e)
+        }, status=500)
+
+def eta_weekly_data_view(request, geoid):
+    return render(request , 'eta_weekly_data.html')
+
+
+@csrf_exempt
+def ndvi_dates(request):
+    try:
+        access_token = request.session.get('access_token')
+        if not access_token:
+            auth_header = request.headers.get('Authorization')
+            if auth_header and auth_header.startswith('Bearer '):
+                access_token = auth_header.split(' ')[1]
+        if not access_token:
+            return JsonResponse({'message': 'User not authenticated'}, status=401)
+
+        geoid = request.GET.get('geoid')
+        if not geoid:
+            return JsonResponse({'message': 'Missing geoid'}, status=400)
+
+        url = f"https://api.terrapipe.io/getNDVIDatesForGeoid?geoid={geoid}"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        resp = requests.get(url, headers=headers, timeout=15)
+        return JsonResponse(resp.json(), status=resp.status_code)
+
+    except Exception as e:
+        return JsonResponse({'message': 'Error fetching NDVI dates', 'error': str(e)}, status=500)
+
+
+@csrf_exempt
+def ndvi_dates_earlier(request):
+    try:
+        access_token = request.session.get('access_token')
+        if not access_token:
+            auth_header = request.headers.get('Authorization')
+            if auth_header and auth_header.startswith('Bearer '):
+                access_token = auth_header.split(' ')[1]
+        if not access_token:
+            return JsonResponse({'message': 'User not authenticated'}, status=401)
+
+        geoid = request.GET.get('geoid')
+        min_date = request.GET.get('min_date')
+        if not geoid or not min_date:
+            return JsonResponse({'message': 'Missing required parameters'}, status=400)
+
+        url = f"https://api.terrapipe.io/loadNDVIDatesEarlier?geoid={geoid}&min_date={min_date}"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        resp = requests.get(url, headers=headers, timeout=15)
+        return JsonResponse(resp.json(), status=resp.status_code)
+
+    except Exception as e:
+        return JsonResponse({'message': 'Error fetching earlier NDVI dates', 'error': str(e)}, status=500)
+
+
+@csrf_exempt
+def ndvi_image(request):
+    try:
+        access_token = request.session.get('access_token')
+        if not access_token:
+            auth_header = request.headers.get('Authorization')
+            if auth_header and auth_header.startswith('Bearer '):
+                access_token = auth_header.split(' ')[1]
+        if not access_token:
+            return JsonResponse({'message': 'User not authenticated'}, status=401)
+
+        geoid = request.GET.get('geoid')
+        dt = request.GET.get('dt')
+        if not geoid or not dt:
+            return JsonResponse({'message': 'Missing required parameters'}, status=400)
+
+        url = f"https://api.terrapipe.io/getNDVIImg?geoid={geoid}&dt={dt}"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        resp = requests.get(url, headers=headers, timeout=20)
+        return JsonResponse(resp.json(), status=resp.status_code)
+
+    except Exception as e:
+        return JsonResponse({'message': 'Error fetching NDVI image', 'error': str(e)}, status=500)
+
+def ndvi_image_view(request, geoid):
+    return render(request, 'ndvi_image.html')
+
+
+@token_required
+def get_data_apps(request):
+    allowed_apps = ['getDailyETAStats', 'getWeeklyETAStats', 'getNDVIStats']
+    applications = Application.objects.filter(root__in=allowed_apps).values('id', 'root', 'description', 'picture')
+    
+    data = [
+        {
+            "id": str(app['id']),
+            "root": app['root'],
+            "description": app['description'],
+            "picture": app['picture']
+        }
+        for app in applications
+    ]
+    
+    return JsonResponse({
+        'message': f'Welcome, user {request.session.get('user_registry_id')}!',
+        'products': data
+    })
+
+def data_apps(request):
+    return render(request , 'data_apps.html')
