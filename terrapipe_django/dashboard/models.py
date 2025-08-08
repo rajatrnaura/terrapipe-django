@@ -431,3 +431,16 @@ class UserScope(models.Model):
 
     def __str__(self):
         return f"{self.user_id} - {self.scope_name} ({'Active' if self.active else 'Inactive'})"
+    
+
+class UsersFields(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user_id = models.UUIDField()
+    field_id = models.UUIDField()
+    field_name = models.CharField(max_length=255, blank=True, null=True)
+    created_at = models.DateTimeField()
+    updated_at = models.DateTimeField()
+
+    class Meta:
+        db_table = 'users_fields'
+        unique_together = ('user_id', 'field_id')

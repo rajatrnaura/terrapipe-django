@@ -28,7 +28,7 @@ from .models import ProductPlan, UserSubscription
 from .check_permitions import check_scope_limit
 from django.views import View
 from django.db.models import F
-from .models import UserCart , UserScope
+from .models import UserCart , UserScope , UsersFields
 import re
 import stripe
 import geopandas as gpd
@@ -103,7 +103,7 @@ def login(request):
             request.session["user_registry_id"] = user_registry_id
  
             # print(f"token : {token}")
-            # print(f'user_registry_id : {user_registry_id}')
+            print(f'user_registry_id : {user_registry_id}')
             return JsonResponse({
                 "message": "Login successful",
                 "access_token": token,
@@ -829,11 +829,12 @@ def get_s2_cells_from_polygon(polygon: Polygon, level: int = 13):
     coverer = RegionCoverer()
     coverer.min_level = level
     coverer.max_level = level
-    coverer.max_cells = 500  # Adjust if needed
+    coverer.max_cells = 1000 
 
     covering = coverer.get_covering(rect)
     return set(str(cell_id.id()) for cell_id in covering)
 
+from django.db import connection
 
 @csrf_exempt
 def register_field_boundary(request):
@@ -859,19 +860,25 @@ def register_field_boundary(request):
         decoded = jwt.decode(token, settings.TP_SECRET_KEY, algorithms=["HS256"])
  
         user_id = decoded.get("sub")
+        print(user_id)
 
+        field_cells = get_s2_cells_from_polygon(field_polygon, level=resolution_level)
+        active_scopes = UserScope.objects.filter(user_id=user_id, active=True)
+        scope_cells = set(scope.scope_name for scope in active_scopes)
         subscription  = UserSubscription.objects.get(user_id = user_id, active = True)
         plan_name = subscription.plan.name 
+        plan_name = 'free'
+        # 🔹 Free plan restriction: only allow one field
+        if plan_name == 'free':
+            data = get_geoids(request=request)
+            geoid  = data.get('geoid')
+            if len([geoid]) >= 1:
+                return JsonResponse({
+                    "message": "Free plan users can only register one field."
+                }, status=403)
 
-         # For PLUS plan, check tile containment using S2 RegionCoverer
+        # PLUS plan restriction
         if plan_name == 'plus':
-            field_cells = get_s2_cells_from_polygon(field_polygon, level=resolution_level)
-
-            active_scopes = UserScope.objects.filter(user_id=user_id, active=True)
-            scope_cells = set(scope.scope_name for scope in active_scopes)
-            # print(f'field_cells--{field_cells}')
-            # print(f'active_scopes--{active_scopes}')
-            # print(f'scope_cells--{scope_cells}')
             if not field_cells.issubset(scope_cells):
                 return JsonResponse({
                     "message": "Field is outside your subscribed S2 tiles."
@@ -893,7 +900,8 @@ def register_field_boundary(request):
             "wkt": field_wkt,
             "threshold": threshold,
             "s2_index": s2_index,
-            "resolution_level": resolution_level
+            "resolution_level": resolution_level , 
+            "user_id": user_id
         }
 
         # Send POST request to AgStack

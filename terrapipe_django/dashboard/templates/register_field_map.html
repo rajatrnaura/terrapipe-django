@@ -7,6 +7,8 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+
   <style>
     html, body, #map { height: 100%; margin: 0; }
     #form-container {
@@ -49,6 +51,18 @@
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
+    .alert {
+  padding: 10px;
+  border-radius: 5px;
+  margin-top: 10px;
+  font-weight: 600;
+}
+.alert-danger {
+  background-color: #f8d7da;
+  color: #842029;
+  border: 1px solid #f5c2c7;
+}
+
   </style>
 </head>
 <body>
@@ -73,6 +87,18 @@
     <button onclick="registerField()">Register</button>
   </div>
 
+    <!-- Bootstrap Toast for alert messages -->
+  <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1100">
+    <div id="alertToast" class="toast align-items-center text-bg-danger border-0" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="d-flex">
+        <div class="toast-body" id="toast-message">
+          <!-- Message will be injected here -->
+        </div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+    </div>
+  </div>
+
   <div id="wkt-output"></div>
 </div>
 
@@ -95,6 +121,11 @@ const map = L.map('map', {
   center: [28.6139, 77.2090], // Default fallback
   zoom: 2
 });
+
+const toastElement = document.getElementById('alertToast');
+const toast = new bootstrap.Toast(toastElement);
+const toastMessage = document.getElementById('toast-message');
+
 
 // Use geolocation to center the map
 if (navigator.geolocation) {
@@ -215,12 +246,6 @@ function registerField() {
   const s2 = document.getElementById('s2_index').value || "8,13";
   const manualInput = document.getElementById('manual-wkt').value.trim();
   const geojsonFile = document.getElementById('geojson-upload').files[0];
-//   const osm = L.tileLayer(
-//   'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-//     attribution: '&copy; OpenStreetMap contributors',
-//     maxZoom: 19
-//   }
-// ).addTo(map);
 
   let wktPromise;
 
@@ -267,53 +292,68 @@ function registerField() {
       body: JSON.stringify(payload)
     });
   })
-  .then(response => response.json().then(data => ({ ok: response.ok, body: data })))
-  .then(({ ok, body }) => {
-    loader.style.display = 'none';
-    const responseCard = document.getElementById('response-card');
-    responseCard.style.display = 'block';
+  .then(async response => {
+  const data = await response.json().catch(() => ({}));
+  loader.style.display = 'none';
 
-    if (ok) {
-      localStorage.setItem('lastGeoJson', JSON.stringify(body["Geo JSON"]));
-      document.getElementById('response-geo-id').innerText = `Geo Id: ${body["Geo Id"]}`;
-      const geoJsonContainer = document.getElementById('response-geo-json');
-      geoJsonContainer.innerHTML = '';
-      renderJSONTree(body["Geo JSON"], geoJsonContainer);
-      document.getElementById('response-status').innerText = `Status: ${body.message}`;
+  if (!response.ok) {
+  let message;
+  if (response.status === 403) {
+    message = data.message || "Access forbidden: You don't have permission to perform this action.";
+  } else {
+    message = data.message || `Error: ${response.status}`;
+  }
 
-      const s2Tokens = body["S2 Cell Tokens"];
-      let s2TokensHtml = 'S2 Cell Tokens: {';
-      if (s2Tokens && typeof s2Tokens === 'object') {
-        for (const [level, values] of Object.entries(s2Tokens)) {
-          s2TokensHtml += `<div class="nested">${level}: ${Array.isArray(values) ? '[' + values.join(', ') + ']' : values}</div>`;
-        }
-      } else {
-        s2TokensHtml += '<div class="nested">None</div>';
-      }
-      s2TokensHtml += '}';
-      document.getElementById('response-s2-tokens').innerHTML = s2TokensHtml;
+  toastMessage.textContent = message;
+  toast.show();
 
-      const layer = L.geoJSON(body["Geo JSON"], {
-        style: { color: '#28a745', weight: 3, opacity: 0.9, fillOpacity: 0.4 }
-      }).addTo(drawnItems);
-      map.fitBounds(layer.getBounds());
-    } else {
-      document.getElementById('response-geo-id').innerText = '';
-      document.getElementById('response-geo-json').innerText = '';
-      document.getElementById('response-status').innerText = `Status: ${body.message || 'Unknown error'}`;
-      document.getElementById('response-s2-tokens').innerText = '';
+  return Promise.reject(message);
+}
+
+
+  // On success, hide alert box and reset classes
+  alertBox.style.display = 'none';
+  alertBox.innerText = '';
+  alertBox.className = 'alert alert-danger'; // reset to default for next errors
+
+  // Continue with success handling...
+
+  const responseCard = document.getElementById('response-card');
+  responseCard.style.display = 'block';
+
+  localStorage.setItem('lastGeoJson', JSON.stringify(data["Geo JSON"]));
+  document.getElementById('response-geo-id').innerText = `Geo Id: ${data["Geo Id"]}`;
+  const geoJsonContainer = document.getElementById('response-geo-json');
+  geoJsonContainer.innerHTML = '';
+  renderJSONTree(data["Geo JSON"], geoJsonContainer);
+  document.getElementById('response-status').innerText = `Status: ${data.message}`;
+
+  const s2Tokens = data["S2 Cell Tokens"];
+  let s2TokensHtml = 'S2 Cell Tokens: {';
+  if (s2Tokens && typeof s2Tokens === 'object') {
+    for (const [level, values] of Object.entries(s2Tokens)) {
+      s2TokensHtml += `<div class="nested">${level}: ${Array.isArray(values) ? '[' + values.join(', ') + ']' : values}</div>`;
     }
-  })
+  } else {
+    s2TokensHtml += '<div class="nested">None</div>';
+  }
+  s2TokensHtml += '}';
+  document.getElementById('response-s2-tokens').innerHTML = s2TokensHtml;
+
+  const layer = L.geoJSON(data["Geo JSON"], {
+    style: { color: '#28a745', weight: 3, opacity: 0.9, fillOpacity: 0.4 }
+  }).addTo(drawnItems);
+  map.fitBounds(layer.getBounds());
+})
+
   .catch(error => {
     loader.style.display = 'none';
-    document.getElementById('response-card').style.display = 'block';
-    document.getElementById('response-geo-id').innerText = '';
-    document.getElementById('response-geo-json').innerText = '';
-    document.getElementById('response-status').innerText = 'Status: Error occurred while registering field.';
-    document.getElementById('response-s2-tokens').innerText = '';
-    console.error("Error:", error);
+    if (typeof error === 'string') {
+      console.error("Error:", error);
+    }
   });
 }
+
 </script>
 
 </body>
